@@ -1,0 +1,291 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net: Default-deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 3. Entity Validation Blueprints (Synced verbatim with firebase-blueprint.json)
+
+    function isValidPlayerProfile(data) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'fideId', 'federation', 'club', 'fideTitle',
+          'birthYear', 'kFactor', 'standardElo', 'rapidElo', 'blitzElo',
+          'targetElo', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'fideId', 'federation', 'club', 'fideTitle',
+          'birthYear', 'kFactor', 'standardElo', 'rapidElo', 'blitzElo',
+          'targetElo', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && data.uid.size() >= 1 && data.uid.size() <= 128 && data.uid.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 80
+        && data.fideId is string && data.fideId.size() >= 0 && data.fideId.size() <= 20 && data.fideId.matches('^[0-9]*$')
+        && data.federation is string && data.federation.size() >= 2 && data.federation.size() <= 3 && data.federation.matches('^[A-Z]{2,3}$')
+        && data.club is string && data.club.size() >= 0 && data.club.size() <= 100
+        && data.fideTitle is string && data.fideTitle.size() <= 10
+        && data.fideTitle in ['None', 'CM', 'FM', 'IM', 'GM', 'WCM', 'WFM', 'WIM', 'WGM']
+        && data.birthYear is number && data.birthYear >= 1900 && data.birthYear <= 2026
+        && data.kFactor is number && data.kFactor in [10, 20, 40]
+        && data.standardElo is number && data.standardElo >= 1000 && data.standardElo <= 3500
+        && data.rapidElo is number && data.rapidElo >= 1000 && data.rapidElo <= 3500
+        && data.blitzElo is number && data.blitzElo >= 1000 && data.blitzElo <= 3500
+        && data.targetElo is number && data.targetElo >= 1000 && data.targetElo <= 3500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidTournament(data) {
+      return data.keys().hasAll([
+          'ownerId', 'name', 'location', 'startDate', 'endDate', 'timeControl',
+          'timeControlDetails', 'format', 'totalRounds', 'startingElo',
+          'status', 'normTarget', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'name', 'location', 'startDate', 'endDate', 'timeControl',
+          'timeControlDetails', 'format', 'totalRounds', 'startingElo',
+          'status', 'normTarget', 'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.name is string && data.name.size() >= 1 && data.name.size() <= 120
+        && data.location is string && data.location.size() >= 1 && data.location.size() <= 100
+        && data.startDate is string && data.startDate.size() == 10 && data.startDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.endDate is string && data.endDate.size() == 10 && data.endDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.timeControl is string && data.timeControl.size() <= 16 && data.timeControl in ['Standard', 'Rapid', 'Blitz']
+        && data.timeControlDetails is string && data.timeControlDetails.size() >= 1 && data.timeControlDetails.size() <= 100
+        && data.format is string && data.format.size() <= 20 && data.format in ['Swiss', 'Round Robin', 'Team', 'Knockout']
+        && data.totalRounds is number && data.totalRounds >= 1 && data.totalRounds <= 30
+        && data.startingElo is number && data.startingElo >= 1000 && data.startingElo <= 3500
+        && data.status is string && data.status.size() <= 16 && data.status in ['upcoming', 'ongoing', 'completed']
+        && data.normTarget is string && data.normTarget.size() >= 0 && data.normTarget.size() <= 80
+        && data.notes is string && data.notes.size() >= 0 && data.notes.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidFideGame(data) {
+      return data.keys().hasAll([
+          'ownerId', 'tournamentId', 'tournamentName', 'round', 'datePlayed',
+          'timeControl', 'playerColor', 'playerElo', 'opponentName',
+          'opponentFideId', 'opponentTitle', 'opponentElo', 'opponentFederation',
+          'result', 'playerScore', 'eloChange', 'kFactorUsed', 'ecoCode',
+          'openingName', 'movesCount', 'termination', 'pgn', 'keyMomentNote',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'tournamentId', 'tournamentName', 'round', 'datePlayed',
+          'timeControl', 'playerColor', 'playerElo', 'opponentName',
+          'opponentFideId', 'opponentTitle', 'opponentElo', 'opponentFederation',
+          'result', 'playerScore', 'eloChange', 'kFactorUsed', 'ecoCode',
+          'openingName', 'movesCount', 'termination', 'pgn', 'keyMomentNote',
+          'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.tournamentId is string && data.tournamentId.size() >= 1 && data.tournamentId.size() <= 128 && data.tournamentId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.tournamentName is string && data.tournamentName.size() >= 1 && data.tournamentName.size() <= 120
+        && data.round is number && data.round >= 1 && data.round <= 30
+        && data.datePlayed is string && data.datePlayed.size() == 10 && data.datePlayed.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && data.timeControl is string && data.timeControl.size() <= 16 && data.timeControl in ['Standard', 'Rapid', 'Blitz']
+        && data.playerColor is string && data.playerColor.size() <= 10 && data.playerColor in ['White', 'Black']
+        && data.playerElo is number && data.playerElo >= 1000 && data.playerElo <= 3500
+        && data.opponentName is string && data.opponentName.size() >= 1 && data.opponentName.size() <= 80
+        && data.opponentFideId is string && data.opponentFideId.size() >= 0 && data.opponentFideId.size() <= 20 && data.opponentFideId.matches('^[0-9]*$')
+        && data.opponentTitle is string && data.opponentTitle.size() <= 10
+        && data.opponentTitle in ['None', 'CM', 'FM', 'IM', 'GM', 'WCM', 'WFM', 'WIM', 'WGM']
+        && data.opponentElo is number && data.opponentElo >= 1000 && data.opponentElo <= 3500
+        && data.opponentFederation is string && data.opponentFederation.size() >= 2 && data.opponentFederation.size() <= 3 && data.opponentFederation.matches('^[A-Z]{2,3}$')
+        && data.result is string && data.result.size() <= 10 && data.result in ['1-0', '0-1', '1/2-1/2']
+        && data.playerScore is number && data.playerScore in [0, 0.5, 1]
+        && data.eloChange is number && data.eloChange >= -100 && data.eloChange <= 100
+        && data.kFactorUsed is number && data.kFactorUsed in [10, 20, 40]
+        && data.ecoCode is string && data.ecoCode.size() == 3 && data.ecoCode.matches('^[A-E][0-9]{2}$')
+        && data.openingName is string && data.openingName.size() >= 1 && data.openingName.size() <= 120
+        && data.movesCount is number && data.movesCount >= 1 && data.movesCount <= 300
+        && data.termination is string && data.termination.size() <= 30
+        && data.termination in ['Checkmate', 'Resignation', 'Time Forfeit', 'Agreement', 'Stalemate', 'Threefold Repetition', 'Insufficient Material']
+        && data.pgn is string && data.pgn.size() >= 0 && data.pgn.size() <= 5000
+        && data.keyMomentNote is string && data.keyMomentNote.size() >= 0 && data.keyMomentNote.size() <= 1000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMonthlyRatingRecord(data) {
+      return data.keys().hasAll([
+          'ownerId', 'period', 'standardElo', 'rapidElo', 'blitzElo',
+          'standardGamesCount', 'standardDelta', 'fideRankNational',
+          'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'period', 'standardElo', 'rapidElo', 'blitzElo',
+          'standardGamesCount', 'standardDelta', 'fideRankNational',
+          'notes', 'createdAt', 'updatedAt'
+        ])
+        && data.ownerId is string && data.ownerId.size() >= 1 && data.ownerId.size() <= 128 && data.ownerId.matches('^[a-zA-Z0-9_\\-]+$')
+        && data.ownerId == request.auth.uid
+        && data.period is string && data.period.size() == 7 && data.period.matches('^[0-9]{4}-[0-9]{2}$')
+        && data.standardElo is number && data.standardElo >= 1000 && data.standardElo <= 3500
+        && data.rapidElo is number && data.rapidElo >= 1000 && data.rapidElo <= 3500
+        && data.blitzElo is number && data.blitzElo >= 1000 && data.blitzElo <= 3500
+        && data.standardGamesCount is number && data.standardGamesCount >= 0 && data.standardGamesCount <= 200
+        && data.standardDelta is number && data.standardDelta >= -500 && data.standardDelta <= 500
+        && data.fideRankNational is number && data.fideRankNational >= 0 && data.fideRankNational <= 1000000
+        && data.notes is string && data.notes.size() >= 0 && data.notes.size() <= 400
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // 4. Collection Match Blocks
+
+    match /players/{userId} {
+      allow get: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId;
+      allow list: if false;
+
+      allow create: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidPlayerProfile(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(userId)
+        && request.auth.uid == userId
+        && isValidPlayerProfile(incoming())
+        && existing().uid == request.auth.uid
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update player profile metadata & ratings
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'fideId', 'federation', 'club', 'fideTitle',
+            'birthYear', 'kFactor', 'standardElo', 'rapidElo', 'blitzElo',
+            'targetElo', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(userId) && request.auth.uid == userId && existing().uid == request.auth.uid;
+    }
+
+    match /tournaments/{tournamentId} {
+      allow get: if isVerifiedUser() && isValidId(tournamentId) && existing().ownerId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerifiedUser()
+        && isValidId(tournamentId)
+        && isValidTournament(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(tournamentId)
+        && isValidTournament(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && existing().status != 'completed'
+        && (
+          // Action 1: Update tournament details or advance status
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'name', 'location', 'startDate', 'endDate', 'timeControl',
+            'timeControlDetails', 'format', 'totalRounds', 'startingElo',
+            'status', 'normTarget', 'notes', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(tournamentId) && existing().ownerId == request.auth.uid;
+    }
+
+    match /games/{gameId} {
+      allow get: if isVerifiedUser() && isValidId(gameId) && existing().ownerId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerifiedUser()
+        && isValidId(gameId)
+        && isValidFideGame(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId))
+        && get(/databases/$(database)/documents/tournaments/$(incoming().tournamentId)).data.ownerId == request.auth.uid;
+
+      allow update: if isVerifiedUser()
+        && isValidId(gameId)
+        && isValidFideGame(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update game details, PGN, or post-mortem analysis
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'tournamentId', 'tournamentName', 'round', 'datePlayed',
+            'timeControl', 'playerColor', 'playerElo', 'opponentName',
+            'opponentFideId', 'opponentTitle', 'opponentElo', 'opponentFederation',
+            'result', 'playerScore', 'eloChange', 'kFactorUsed', 'ecoCode',
+            'openingName', 'movesCount', 'termination', 'pgn', 'keyMomentNote',
+            'updatedAt'
+          ])
+        )
+        && exists(/databases/$(database)/documents/tournaments/$(incoming().tournamentId))
+        && get(/databases/$(database)/documents/tournaments/$(incoming().tournamentId)).data.ownerId == request.auth.uid;
+
+      allow delete: if isVerifiedUser() && isValidId(gameId) && existing().ownerId == request.auth.uid;
+    }
+
+    match /ratingHistory/{ratingId} {
+      allow get: if isVerifiedUser() && isValidId(ratingId) && existing().ownerId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.ownerId == request.auth.uid;
+
+      allow create: if isVerifiedUser()
+        && isValidId(ratingId)
+        && isValidMonthlyRatingRecord(incoming())
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isVerifiedUser()
+        && isValidId(ratingId)
+        && isValidMonthlyRatingRecord(incoming())
+        && existing().ownerId == request.auth.uid
+        && incoming().ownerId == existing().ownerId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action 1: Update monthly rating list snapshot
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'period', 'standardElo', 'rapidElo', 'blitzElo',
+            'standardGamesCount', 'standardDelta', 'fideRankNational',
+            'notes', 'updatedAt'
+          ])
+        );
+
+      allow delete: if isVerifiedUser() && isValidId(ratingId) && existing().ownerId == request.auth.uid;
+    }
+  }
+}

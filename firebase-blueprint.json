@@ -1,0 +1,487 @@
+{
+  "entities": {
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "description": "Official FIDE player profile and current ratings across Standard, Rapid, and Blitz cadences.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Player full name as listed on FIDE",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "fideId": {
+          "type": "string",
+          "description": "Official numeric FIDE ID code",
+          "minLength": 0,
+          "maxLength": 20,
+          "pattern": "^[0-9]*$"
+        },
+        "federation": {
+          "type": "string",
+          "description": "3-letter FIDE Federation code (e.g. FRA, BEL, SUI)",
+          "minLength": 2,
+          "maxLength": 3,
+          "pattern": "^[A-Z]{2,3}$"
+        },
+        "club": {
+          "type": "string",
+          "description": "Chess club affiliation",
+          "minLength": 0,
+          "maxLength": 100
+        },
+        "fideTitle": {
+          "type": "string",
+          "description": "Official FIDE title",
+          "enum": ["None", "CM", "FM", "IM", "GM", "WCM", "WFM", "WIM", "WGM"],
+          "maxLength": 10
+        },
+        "birthYear": {
+          "type": "number",
+          "description": "Player birth year"
+        },
+        "kFactor": {
+          "type": "number",
+          "description": "Current FIDE K-Factor (10, 20, or 40)",
+          "enum": [10, 20, 40]
+        },
+        "standardElo": {
+          "type": "number",
+          "description": "Current official FIDE Standard rating"
+        },
+        "rapidElo": {
+          "type": "number",
+          "description": "Current official FIDE Rapid rating"
+        },
+        "blitzElo": {
+          "type": "number",
+          "description": "Current official FIDE Blitz rating"
+        },
+        "targetElo": {
+          "type": "number",
+          "description": "Personal target FIDE Standard rating goal"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "fideId",
+        "federation",
+        "club",
+        "fideTitle",
+        "birthYear",
+        "kFactor",
+        "standardElo",
+        "rapidElo",
+        "blitzElo",
+        "targetElo",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "Tournament": {
+      "title": "Tournament",
+      "description": "FIDE-rated tournament or team championship event tracked by the player.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "name": {
+          "type": "string",
+          "description": "Official tournament name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "location": {
+          "type": "string",
+          "description": "City and federation of the tournament",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "startDate": {
+          "type": "string",
+          "description": "Start date in YYYY-MM-DD format",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "endDate": {
+          "type": "string",
+          "description": "End date in YYYY-MM-DD format",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "timeControl": {
+          "type": "string",
+          "description": "FIDE rating category",
+          "enum": ["Standard", "Rapid", "Blitz"],
+          "maxLength": 16
+        },
+        "timeControlDetails": {
+          "type": "string",
+          "description": "Exact clock cadence description",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "format": {
+          "type": "string",
+          "description": "Pairing format",
+          "enum": ["Swiss", "Round Robin", "Team", "Knockout"],
+          "maxLength": 20
+        },
+        "totalRounds": {
+          "type": "number",
+          "description": "Total scheduled rounds in the tournament"
+        },
+        "startingElo": {
+          "type": "number",
+          "description": "Player FIDE Elo at the start of the tournament"
+        },
+        "status": {
+          "type": "string",
+          "description": "Tournament progress status",
+          "enum": ["upcoming", "ongoing", "completed"],
+          "maxLength": 16
+        },
+        "normTarget": {
+          "type": "string",
+          "description": "Section or prize category target",
+          "minLength": 0,
+          "maxLength": 80
+        },
+        "notes": {
+          "type": "string",
+          "description": "Tournament preparation and summary notes",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": [
+        "ownerId",
+        "name",
+        "location",
+        "startDate",
+        "endDate",
+        "timeControl",
+        "timeControlDetails",
+        "format",
+        "totalRounds",
+        "startingElo",
+        "status",
+        "normTarget",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "FideGame": {
+      "title": "FideGame",
+      "description": "Individual FIDE-rated game record with Elo calculation, ECO opening, and PGN.",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tournamentId": {
+          "type": "string",
+          "description": "Referenced Tournament document ID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "tournamentName": {
+          "type": "string",
+          "description": "Tournament display name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "round": {
+          "type": "number",
+          "description": "Round number in the tournament"
+        },
+        "datePlayed": {
+          "type": "string",
+          "description": "Date played in YYYY-MM-DD format",
+          "minLength": 10,
+          "maxLength": 10,
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "timeControl": {
+          "type": "string",
+          "description": "FIDE rating category",
+          "enum": ["Standard", "Rapid", "Blitz"],
+          "maxLength": 16
+        },
+        "playerColor": {
+          "type": "string",
+          "description": "Color played by user",
+          "enum": ["White", "Black"],
+          "maxLength": 10
+        },
+        "playerElo": {
+          "type": "number",
+          "description": "User FIDE Elo at game time"
+        },
+        "opponentName": {
+          "type": "string",
+          "description": "Opponent full name",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "opponentFideId": {
+          "type": "string",
+          "description": "Opponent FIDE ID",
+          "minLength": 0,
+          "maxLength": 20,
+          "pattern": "^[0-9]*$"
+        },
+        "opponentTitle": {
+          "type": "string",
+          "description": "Opponent FIDE title",
+          "enum": ["None", "CM", "FM", "IM", "GM", "WCM", "WFM", "WIM", "WGM"],
+          "maxLength": 10
+        },
+        "opponentElo": {
+          "type": "number",
+          "description": "Opponent official FIDE Elo"
+        },
+        "opponentFederation": {
+          "type": "string",
+          "description": "Opponent 3-letter FIDE federation",
+          "minLength": 2,
+          "maxLength": 3,
+          "pattern": "^[A-Z]{2,3}$"
+        },
+        "result": {
+          "type": "string",
+          "description": "Official game result",
+          "enum": ["1-0", "0-1", "1/2-1/2"],
+          "maxLength": 10
+        },
+        "playerScore": {
+          "type": "number",
+          "description": "Points scored by user (1, 0.5, or 0)"
+        },
+        "eloChange": {
+          "type": "number",
+          "description": "Calculated FIDE Elo delta for this game"
+        },
+        "kFactorUsed": {
+          "type": "number",
+          "description": "K-Factor used for the Elo calculation",
+          "enum": [10, 20, 40]
+        },
+        "ecoCode": {
+          "type": "string",
+          "description": "Encyclopaedia of Chess Openings code (A00-E99)",
+          "minLength": 3,
+          "maxLength": 3,
+          "pattern": "^[A-E][0-9]{2}$"
+        },
+        "openingName": {
+          "type": "string",
+          "description": "Opening and variation name",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "movesCount": {
+          "type": "number",
+          "description": "Total full moves played"
+        },
+        "termination": {
+          "type": "string",
+          "description": "How the game concluded",
+          "enum": [
+            "Checkmate",
+            "Resignation",
+            "Time Forfeit",
+            "Agreement",
+            "Stalemate",
+            "Threefold Repetition",
+            "Insufficient Material"
+          ],
+          "maxLength": 30
+        },
+        "pgn": {
+          "type": "string",
+          "description": "Game moves in PGN format",
+          "minLength": 0,
+          "maxLength": 5000
+        },
+        "keyMomentNote": {
+          "type": "string",
+          "description": "Post-mortem critical position analysis and takeaways",
+          "minLength": 0,
+          "maxLength": 1000
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": [
+        "ownerId",
+        "tournamentId",
+        "tournamentName",
+        "round",
+        "datePlayed",
+        "timeControl",
+        "playerColor",
+        "playerElo",
+        "opponentName",
+        "opponentFideId",
+        "opponentTitle",
+        "opponentElo",
+        "opponentFederation",
+        "result",
+        "playerScore",
+        "eloChange",
+        "kFactorUsed",
+        "ecoCode",
+        "openingName",
+        "movesCount",
+        "termination",
+        "pgn",
+        "keyMomentNote",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MonthlyRatingRecord": {
+      "title": "MonthlyRatingRecord",
+      "description": "Official monthly FIDE rating list snapshot (published on the 1st of each month).",
+      "type": "object",
+      "properties": {
+        "ownerId": {
+          "type": "string",
+          "description": "Owner Firebase Auth UID",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "period": {
+          "type": "string",
+          "description": "FIDE publication month in YYYY-MM format",
+          "minLength": 7,
+          "maxLength": 7,
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        },
+        "standardElo": {
+          "type": "number",
+          "description": "Published Standard FIDE rating"
+        },
+        "rapidElo": {
+          "type": "number",
+          "description": "Published Rapid FIDE rating"
+        },
+        "blitzElo": {
+          "type": "number",
+          "description": "Published Blitz FIDE rating"
+        },
+        "standardGamesCount": {
+          "type": "number",
+          "description": "Rated Standard games included in this monthly period"
+        },
+        "standardDelta": {
+          "type": "number",
+          "description": "Monthly Standard Elo net change"
+        },
+        "fideRankNational": {
+          "type": "number",
+          "description": "Optional national active ranking position (0 if unset)"
+        },
+        "notes": {
+          "type": "string",
+          "description": "Context note for this rating list publication",
+          "minLength": 0,
+          "maxLength": 400
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server creation timestamp"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server update timestamp"
+        }
+      },
+      "required": [
+        "ownerId",
+        "period",
+        "standardElo",
+        "rapidElo",
+        "blitzElo",
+        "standardGamesCount",
+        "standardDelta",
+        "fideRankNational",
+        "notes",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/players/{userId}": {
+      "schema": "PlayerProfile",
+      "description": "Stores each player's FIDE profile, keyed by their Firebase Auth UID."
+    },
+    "/tournaments/{tournamentId}": {
+      "schema": "Tournament",
+      "description": "Stores FIDE tournaments tracked by users."
+    },
+    "/games/{gameId}": {
+      "schema": "FideGame",
+      "description": "Stores individual FIDE-rated games linked to a tournament."
+    },
+    "/ratingHistory/{ratingId}": {
+      "schema": "MonthlyRatingRecord",
+      "description": "Stores monthly FIDE rating snapshots (1st of each month)."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "FIDE Chess Ledger",
+  "description": "Plateforme complète de suivi des parties d'échecs homologuées FIDE, gestion de tournois et analyse statistique de l'évolution mensuelle du classement Elo.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
