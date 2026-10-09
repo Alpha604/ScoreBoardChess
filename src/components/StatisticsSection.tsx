@@ -20,6 +20,7 @@ import {
   formatPeriodLabel,
 } from '../utils/fideMath';
 import { EloEvolutionChart } from './EloEvolutionChart';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface StatisticsSectionProps {
   records: MonthlyRatingRecord[];
@@ -51,6 +52,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   const [fideRankNational, setFideRankNational] = useState(4120);
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [recordToDelete, setRecordToDelete] = useState<MonthlyRatingRecord | null>(null);
 
   // Simulateur Elo interactif
   const [simPlayerElo, setSimPlayerElo] = useState(profile.standardElo);
@@ -809,7 +811,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                         </button>
                         <button
                           type="button"
-                          onClick={() => onDeleteRatingRecord(r.id)}
+                          onClick={() => setRecordToDelete(r)}
                           className="p-1 text-slate-400 hover:text-rose-700 rounded hover:bg-rose-50"
                           title="Supprimer ce relevé"
                         >
@@ -824,6 +826,40 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           </div>
         </div>
       </div>
+
+      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UN RELEVÉ MENSUEL (3 secondes) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(recordToDelete)}
+        title="Supprimer ce relevé mensuel FIDE ?"
+        subtitle="Vous êtes sur le point de supprimer ce mois de votre historique de classement."
+        itemName={recordToDelete ? formatPeriodLabel(recordToDelete.period) : ''}
+        details={
+          recordToDelete
+            ? [
+                {
+                  label: 'Période',
+                  value: formatPeriodLabel(recordToDelete.period),
+                },
+                {
+                  label: 'Elos (Classique / Rapide / Blitz)',
+                  value: `${recordToDelete.standardElo} / ${recordToDelete.rapidElo} / ${recordToDelete.blitzElo}`,
+                },
+                {
+                  label: 'Variation & Parties',
+                  value: `${
+                    recordToDelete.standardDelta >= 0 ? '+' : ''
+                  }${recordToDelete.standardDelta} pts (${recordToDelete.standardGamesCount} parties)`,
+                },
+              ]
+            : []
+        }
+        onCancel={() => setRecordToDelete(null)}
+        onConfirm={async () => {
+          if (!recordToDelete) return;
+          await onDeleteRatingRecord(recordToDelete.id);
+          setRecordToDelete(null);
+        }}
+      />
     </div>
   );
 };

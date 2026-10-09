@@ -114,6 +114,73 @@ export function getOpponentEloForCadence(
   return Number(opp.standardElo) || Number(opp.elo) || 1500;
 }
 
+function capitalizeFirstName(raw: string): string {
+  return raw
+    .trim()
+    .split(/(\s+|-)/)
+    .map((part) => {
+      if (!part || /^(\s+|-)$/.test(part)) return part;
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join('');
+}
+
+/**
+ * Formate un nom de joueur sous la forme stricte : "NOM, Prénom" (sans ID FIDE ni FFE)
+ */
+export function formatPlayerNameLastFirst(rawName: string): string {
+  const cleaned = (rawName || '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/·.*$/g, '')
+    .trim();
+  if (!cleaned) return 'ADVERSAIRE';
+
+  if (cleaned.includes(',')) {
+    const [lastPart, ...firstParts] = cleaned.split(',');
+    const lastName = lastPart.trim().toUpperCase();
+    const firstName = capitalizeFirstName(firstParts.join(' '));
+    return firstName ? `${lastName}, ${firstName}` : lastName;
+  }
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  if (words.length === 1) {
+    return words[0].toUpperCase();
+  }
+
+  // Si le premier mot est déjà tout en majuscules (ex: "DUBOIS Quentin")
+  const firstWord = words[0];
+  const secondWord = words[1];
+  if (
+    firstWord.length > 1 &&
+    firstWord === firstWord.toUpperCase() &&
+    secondWord !== secondWord.toUpperCase()
+  ) {
+    const lastName = firstWord.toUpperCase();
+    const firstName = capitalizeFirstName(words.slice(1).join(' '));
+    return `${lastName}, ${firstName}`;
+  }
+
+  // Sinon par défaut le dernier mot est le nom de famille (ex: "Lucas Vandenberghe")
+  const lastName = words[words.length - 1].toUpperCase();
+  const firstName = capitalizeFirstName(words.slice(0, -1).join(' '));
+  return `${lastName}, ${firstName}`;
+}
+
+/**
+ * Trie les joueurs affrontés par ordre alphabétique sur "NOM, Prénom"
+ */
+export function sortOpponentsAlphabetically(
+  opponents: OpponentPlayer[]
+): OpponentPlayer[] {
+  return [...opponents].sort((a, b) =>
+    formatPlayerNameLastFirst(a.name).localeCompare(
+      formatPlayerNameLastFirst(b.name),
+      'fr',
+      { sensitivity: 'base' }
+    )
+  );
+}
+
 export function sanitizeOpponentPayload(
   input: Omit<OpponentPlayer, 'id'>
 ): Omit<OpponentPlayer, 'id'> {
@@ -131,7 +198,7 @@ export function sanitizeOpponentPayload(
   );
 
   return {
-    name: sanitizeString(input.name, 80, 'Adversaire'),
+    name: formatPlayerNameLastFirst(sanitizeString(input.name, 80, 'Adversaire')),
     fideId: (input.fideId || '').replace(/[^0-9]/g, '').slice(0, 20),
     ffeId: (input.ffeId || '')
       .toUpperCase()

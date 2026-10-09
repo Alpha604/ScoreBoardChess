@@ -4,17 +4,17 @@ import {
   Copy,
   Edit3,
   ExternalLink,
-  Eye,
+  Info,
   Plus,
   Search,
   Trash2,
   Trophy,
+  UserCheck,
   X,
 } from 'lucide-react';
 import {
   FideGame,
   FideTitle,
-  GameResult,
   OpponentPlayer,
   PlayerColor,
   PlayerProfile,
@@ -24,10 +24,15 @@ import {
   calculateFideEloChange,
   calculateFidePerformanceRating,
   ECO_OPENINGS_CATALOG,
-  getPlayerScoreFromResult,
+  getResultFromPlayerScore,
 } from '../utils/fideMath';
-import { getOpponentEloForCadence } from '../utils/fideValidation';
+import {
+  formatPlayerNameLastFirst,
+  getOpponentEloForCadence,
+  sortOpponentsAlphabetically,
+} from '../utils/fideValidation';
 import { ChessboardViewer } from './ChessboardViewer';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface GamesSectionProps {
   games: FideGame[];
@@ -65,6 +70,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedPgnId, setCopiedPgnId] = useState<string | null>(null);
+  const [gameToDelete, setGameToDelete] = useState<FideGame | null>(null);
 
   // Modal d'ajout/édition de partie
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -83,7 +89,8 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   const [opponentTitle, setOpponentTitle] = useState<FideTitle>('None');
   const [opponentElo, setOpponentElo] = useState(1600);
   const [opponentFederation, setOpponentFederation] = useState('FRA');
-  const [result, setResult] = useState<GameResult>('1-0');
+  // Score toujours par rapport à moi : 1 = Victoire, 0.5 = Nulle, 0 = Défaite
+  const [myScore, setMyScore] = useState<0 | 0.5 | 1>(1);
   const [kFactorUsed, setKFactorUsed] = useState<10 | 20 | 40>(profile?.kFactor || 20);
   const [ecoCode, setEcoCode] = useState('');
   const [openingName, setOpeningName] = useState('');
@@ -92,12 +99,18 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   const [keyMomentNote, setKeyMomentNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Adversaires triés par ordre alphabétique "NOM, Prénom"
+  const sortedOpponents = useMemo(
+    () => sortOpponentsAlphabetically(opponents),
+    [opponents]
+  );
+
   const linkOpponentFields = (opp: OpponentPlayer, targetTourneyId?: string) => {
     const tId = targetTourneyId ?? tournamentId;
     const chosenTourney = tournaments.find((t) => t.id === tId);
     const cadence = chosenTourney?.timeControl || 'Standard';
     setOpponentId(opp.id);
-    setOpponentName(opp.name);
+    setOpponentName(formatPlayerNameLastFirst(opp.name));
     setOpponentFideId(opp.fideId || '');
     setOpponentFfeId(opp.ffeId || '');
     setOpponentElo(getOpponentEloForCadence(opp, cadence));
@@ -126,7 +139,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     setOpponentTitle('None');
     setOpponentElo(1600);
     setOpponentFederation('FRA');
-    setResult('1-0');
+    setMyScore(1);
     setKFactorUsed(profile?.kFactor || 20);
     setEcoCode('');
     setOpeningName('');
@@ -144,13 +157,13 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     setPlayerColor(g.playerColor);
     setPlayerElo(g.playerElo);
     setOpponentId(g.opponentId || '');
-    setOpponentName(g.opponentName);
+    setOpponentName(formatPlayerNameLastFirst(g.opponentName));
     setOpponentFideId(g.opponentFideId);
     setOpponentFfeId(g.opponentFfeId || '');
     setOpponentTitle(g.opponentTitle);
     setOpponentElo(g.opponentElo);
     setOpponentFederation(g.opponentFederation);
-    setResult(g.result);
+    setMyScore(g.playerScore);
     setKFactorUsed(g.kFactorUsed);
     setEcoCode(g.ecoCode);
     setOpeningName(g.openingName);
@@ -160,14 +173,14 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     setIsModalOpen(true);
   };
 
-  const computedScore = useMemo(
-    () => getPlayerScoreFromResult(result, playerColor),
-    [result, playerColor]
+  const computedResult = useMemo(
+    () => getResultFromPlayerScore(myScore, playerColor),
+    [myScore, playerColor]
   );
 
   const computedEloDelta = useMemo(
-    () => calculateFideEloChange(playerElo, opponentElo, computedScore, kFactorUsed),
-    [playerElo, opponentElo, computedScore, kFactorUsed]
+    () => calculateFideEloChange(playerElo, opponentElo, myScore, kFactorUsed),
+    [playerElo, opponentElo, myScore, kFactorUsed]
   );
 
   const activeTournament = useMemo(
@@ -185,6 +198,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           const q = searchQuery.toLowerCase();
           return (
             g.opponentName.toLowerCase().includes(q) ||
+            formatPlayerNameLastFirst(g.opponentName).toLowerCase().includes(q) ||
             g.opponentFideId.toLowerCase().includes(q) ||
             (g.opponentFfeId || '').toLowerCase().includes(q) ||
             g.tournamentName.toLowerCase().includes(q) ||
@@ -252,14 +266,14 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           playerColor,
           playerElo: Number(playerElo),
           opponentId: opponentId || undefined,
-          opponentName,
+          opponentName: formatPlayerNameLastFirst(opponentName),
           opponentFideId,
           opponentFfeId,
           opponentTitle,
           opponentElo: Number(opponentElo),
           opponentFederation,
-          result,
-          playerScore: computedScore,
+          result: computedResult,
+          playerScore: myScore,
           eloChange: computedEloDelta,
           kFactorUsed,
           ecoCode,
@@ -286,13 +300,13 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
             Mes Parties par Tournoi
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Sélectionnez un tournoi ci-dessous pour retrouver toutes vos parties, voir contre qui vous avez joué, visionner l’échiquier ou lancer l’analyse sur Chess.com.
+            Liste épurée de vos parties. Cliquez sur « Voir toutes les infos & PGN » pour ouvrir la modale complète avec l’échiquier.
           </p>
         </div>
         <button
           type="button"
           onClick={openNewGameModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-sm transition-colors whitespace-nowrap"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-sm transition-colors whitespace-nowrap cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Ajouter une partie
@@ -304,7 +318,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="text-sm font-extrabold text-indigo-950 flex items-center gap-2">
             <Trophy className="w-4 h-4 text-indigo-600" />
-            1. Choisissez un tournoi pour filtrer ses parties :
+            Filtrer par tournoi :
           </div>
 
           <div className="relative w-full sm:w-72">
@@ -313,8 +327,8 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Chercher un adversaire, ID FIDE..."
-              className="w-full pl-10 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+              placeholder="Chercher un adversaire..."
+              className="w-full pl-10 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:bg-white focus:border-indigo-600"
             />
           </div>
         </div>
@@ -323,13 +337,13 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           <button
             type="button"
             onClick={() => onSelectTournamentFilter('')}
-            className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors ${
+            className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors cursor-pointer ${
               selectedTournamentFilter === ''
                 ? 'bg-indigo-600 text-white border-indigo-600 shadow-sm'
                 : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-indigo-50/60 hover:text-indigo-950'
             }`}
           >
-            Tous les tournois ({games.length} parties)
+            Tous les tournois ({games.length})
           </button>
 
           {tournaments.map((t) => {
@@ -352,7 +366,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 key={t.id}
                 type="button"
                 onClick={() => onSelectTournamentFilter(t.id)}
-                className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors text-left ${
+                className={`px-4 py-2 text-xs font-bold rounded-xl border transition-colors text-left cursor-pointer ${
                   active ? activeColor : inactiveColor
                 }`}
               >
@@ -365,17 +379,12 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           })}
         </div>
 
-        {/* Résumé du tournoi sélectionné */}
+        {/* Résumé épuré de la sélection */}
         <div className="pt-3 border-t border-slate-200 flex flex-wrap items-center justify-between gap-4 text-xs">
           <div className="text-slate-700">
             {activeTournament ? (
               <span>
-                Tournoi sélectionné : <strong className="text-indigo-950">{activeTournament.name}</strong> ({activeTournament.location})
-                {activeTournament.finalRank
-                  ? ` · Classement final : ${activeTournament.finalRank}e${
-                      activeTournament.totalPlayers ? ` / ${activeTournament.totalPlayers} joueurs` : ''
-                    }`
-                  : ''}
+                Tournoi : <strong className="text-indigo-950">{activeTournament.name}</strong> ({activeTournament.location})
               </span>
             ) : (
               <span>Affichage de l’ensemble de vos parties enregistrées</span>
@@ -387,7 +396,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
               Score : <strong>{summary.score} / {summary.count}</strong>
             </span>
             <span className="px-2.5 py-1 rounded-lg bg-violet-50 border border-violet-100 text-violet-950">
-              Performance : <strong>{summary.perf || '—'}</strong>
+              Perf : <strong>{summary.perf || '—'}</strong>
             </span>
             <span
               className={`px-2.5 py-1 rounded-lg border font-bold ${
@@ -396,7 +405,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   : 'bg-rose-50 border-rose-200 text-rose-800'
               }`}
             >
-              Elo gagné :{' '}
+              Elo :{' '}
               <strong>
                 {summary.netElo >= 0
                   ? `+${summary.netElo.toFixed(1)}`
@@ -408,278 +417,386 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         </div>
       </div>
 
-      {/* Liste des Parties + Panneau Échiquier */}
-      <div className="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
-        <div
-          className={`${
-            inspectedGame ? 'xl:col-span-7' : 'xl:col-span-12'
-          } bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden`}
-        >
-          {filteredGames.length === 0 ? (
-            <div className="p-12 text-center space-y-3">
-              <p className="text-base font-bold text-slate-900">
-                Aucune partie trouvée pour cette sélection.
-              </p>
-              <button
-                type="button"
-                onClick={openNewGameModal}
-                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700"
-              >
-                <Plus className="w-4 h-4" />
-                Ajouter une partie
-              </button>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-extrabold text-indigo-950">
-                    <th className="py-3.5 px-4">Ronde & Date</th>
-                    <th className="py-3.5 px-4">Contre qui j’ai joué</th>
-                    <th className="py-3.5 px-4 text-right">Son Elo</th>
-                    <th className="py-3.5 px-4">Couleur</th>
-                    <th className="py-3.5 px-4 text-center">Résultat</th>
-                    <th className="py-3.5 px-4 text-right">Elo Gagné</th>
-                    <th className="py-3.5 px-4 text-right">Visionner & Analyser</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 text-sm">
-                  {filteredGames.map((g) => {
-                    const oppRecordId = findOpponentRecordId(g);
-                    const isSelected = inspectedGame?.id === g.id;
-                    const rowBorder =
-                      g.playerScore === 1
-                        ? 'border-l-4 border-l-emerald-500'
-                        : g.playerScore === 0
-                        ? 'border-l-4 border-l-rose-500'
-                        : 'border-l-4 border-l-amber-500';
-                    return (
-                      <tr
-                        key={g.id}
-                        onClick={() => onSetInspectedGame(g)}
-                        className={`cursor-pointer transition-colors ${rowBorder} ${
-                          isSelected
-                            ? 'bg-indigo-50/70'
-                            : 'hover:bg-slate-50/90'
-                        }`}
-                      >
-                        <td className="py-3 px-4 font-mono text-xs whitespace-nowrap">
-                          <div className="font-extrabold text-indigo-950">Ronde {g.round}</div>
-                          <div className="text-slate-500">{g.datePlayed}</div>
-                        </td>
+      {/* Tableau épuré des Parties */}
+      <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+        {filteredGames.length === 0 ? (
+          <div className="p-12 text-center space-y-3">
+            <p className="text-base font-bold text-slate-900">
+              Aucune partie trouvée pour cette sélection.
+            </p>
+            <button
+              type="button"
+              onClick={openNewGameModal}
+              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700"
+            >
+              <Plus className="w-4 h-4" />
+              Ajouter une partie
+            </button>
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-extrabold text-indigo-950">
+                  <th className="py-3.5 px-4">Ronde & Date</th>
+                  <th className="py-3.5 px-4">Adversaire (NOM, Prénom)</th>
+                  <th className="py-3.5 px-4 text-right">Son Elo</th>
+                  <th className="py-3.5 px-4">Ma Couleur</th>
+                  <th className="py-3.5 px-4 text-center">Mon Résultat</th>
+                  <th className="py-3.5 px-4 text-right">Elo Gagné</th>
+                  <th className="py-3.5 px-4 text-right">Détails & Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-200 text-sm">
+                {filteredGames.map((g) => {
+                  const rowBorder =
+                    g.playerScore === 1
+                      ? 'border-l-4 border-l-emerald-500'
+                      : g.playerScore === 0
+                      ? 'border-l-4 border-l-rose-500'
+                      : 'border-l-4 border-l-amber-500';
+                  return (
+                    <tr
+                      key={g.id}
+                      onClick={() => onSetInspectedGame(g)}
+                      className={`cursor-pointer transition-colors ${rowBorder} hover:bg-slate-50/90`}
+                    >
+                      <td className="py-3 px-4 font-mono text-xs whitespace-nowrap">
+                        <div className="font-extrabold text-indigo-950">Ronde {g.round}</div>
+                        <div className="text-slate-500">{g.datePlayed}</div>
+                      </td>
 
-                        <td className="py-3 px-4">
+                      <td className="py-3 px-4">
+                        <div className="font-bold text-indigo-950">
+                          {formatPlayerNameLastFirst(g.opponentName)}
+                        </div>
+                        <div className="text-xs text-indigo-700 font-medium">
+                          {g.tournamentName}
+                        </div>
+                      </td>
+
+                      <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900">
+                        {g.opponentElo}
+                      </td>
+
+                      <td className="py-3 px-4 text-xs font-semibold">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className={`w-3 h-3 rounded-sm border ${
+                              g.playerColor === 'White'
+                                ? 'bg-white border-slate-400 shadow-2xs'
+                                : 'bg-slate-900 border-slate-900'
+                            }`}
+                          />
+                          {g.playerColor === 'White' ? 'Blancs' : 'Noirs'}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-center font-mono text-xs font-extrabold">
+                        <span
+                          className={
+                            g.playerScore === 1
+                              ? 'text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200'
+                              : g.playerScore === 0
+                              ? 'text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200'
+                              : 'text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200'
+                          }
+                        >
+                          {g.playerScore === 1
+                            ? 'Victoire'
+                            : g.playerScore === 0.5
+                            ? 'Nulle'
+                            : 'Défaite'}
+                        </span>
+                      </td>
+
+                      <td className="py-3 px-4 text-right font-mono font-extrabold">
+                        <span
+                          className={
+                            g.eloChange >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                          }
+                        >
+                          {g.eloChange >= 0
+                            ? `+${g.eloChange.toFixed(1)}`
+                            : g.eloChange.toFixed(1)}
+                        </span>
+                      </td>
+
+                      <td
+                        className="py-3 px-4 text-right whitespace-nowrap"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="inline-flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (oppRecordId) onSelectOpponentProfile(oppRecordId);
-                            }}
-                            className="font-bold text-indigo-950 hover:text-indigo-600 hover:underline text-left"
+                            onClick={() => onSetInspectedGame(g)}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-extrabold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg cursor-pointer"
                           >
-                            {g.opponentTitle !== 'None' ? `${g.opponentTitle} ` : ''}
-                            {g.opponentName}
+                            <Info className="w-3.5 h-3.5 text-indigo-600" />
+                            Voir toutes les infos & PGN
                           </button>
-                          <div className="text-xs text-slate-600 font-mono">
-                            <span className="font-semibold text-indigo-700">{g.tournamentName}</span>
-                            {g.opponentFideId ? ` · FIDE ${g.opponentFideId}` : ''}
-                            {g.opponentFfeId ? ` · FFE ${g.opponentFfeId}` : ''}
-                          </div>
-                        </td>
 
-                        <td className="py-3 px-4 text-right font-mono font-extrabold text-slate-900">
-                          {g.opponentElo}
-                        </td>
-
-                        <td className="py-3 px-4 text-xs font-semibold">
-                          <span className="inline-flex items-center gap-1.5">
-                            <span
-                              className={`w-3 h-3 rounded-sm border ${
-                                g.playerColor === 'White'
-                                  ? 'bg-white border-slate-400 shadow-2xs'
-                                  : 'bg-slate-900 border-slate-900'
-                              }`}
-                            />
-                            {g.playerColor === 'White' ? 'Blancs' : 'Noirs'}
-                          </span>
-                        </td>
-
-                        <td className="py-3 px-4 text-center font-mono text-xs font-extrabold">
-                          <span
-                            className={
-                              g.playerScore === 1
-                                ? 'text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200'
-                                : g.playerScore === 0
-                                ? 'text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200'
-                                : 'text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200'
-                            }
+                          <button
+                            type="button"
+                            onClick={() => openEditGameModal(g)}
+                            className="p-1.5 text-slate-500 hover:text-indigo-700 rounded-lg hover:bg-indigo-50"
+                            title="Modifier la partie"
                           >
-                            {g.playerScore === 1
-                              ? 'Victoire (1pt)'
-                              : g.playerScore === 0.5
-                              ? 'Nulle (½)'
-                              : 'Défaite (0pt)'}
-                          </span>
-                        </td>
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
 
-                        <td className="py-3 px-4 text-right font-mono font-extrabold">
-                          <span
-                            className={
-                              g.eloChange >= 0 ? 'text-emerald-700' : 'text-rose-700'
-                            }
+                          <button
+                            type="button"
+                            onClick={() => setGameToDelete(g)}
+                            className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50"
+                            title="Supprimer la partie"
                           >
-                            {g.eloChange >= 0
-                              ? `+${g.eloChange.toFixed(1)}`
-                              : g.eloChange.toFixed(1)}
-                          </span>
-                        </td>
-
-                        <td
-                          className="py-3 px-4 text-right whitespace-nowrap"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <div className="inline-flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => onSetInspectedGame(g)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                              Visionner
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => handleAnalyzeOnChessCom(g)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg"
-                              title="Copie le PGN et ouvre Chess.com Analysis"
-                            >
-                              {copiedPgnId === g.id ? (
-                                <>
-                                  <Check className="w-3.5 h-3.5" />
-                                  PGN copié !
-                                </>
-                              ) : (
-                                <>
-                                  Chess.com
-                                  <ExternalLink className="w-3 h-3" />
-                                </>
-                              )}
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => openEditGameModal(g)}
-                              className="p-1.5 text-slate-500 hover:text-indigo-700 rounded-lg hover:bg-indigo-50"
-                              title="Modifier la partie"
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-
-                            <button
-                              type="button"
-                              onClick={() => onDeleteGame(g.id)}
-                              className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50"
-                              title="Supprimer la partie"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Panneau de Visionnage de la Partie & Lien Chess.com */}
-        {inspectedGame && (
-          <div className="xl:col-span-5 bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-6 shadow-sm space-y-4 sticky top-20">
-            <div className="flex items-start justify-between gap-2 border-b border-slate-100 pb-3">
-              <div>
-                <div className="text-xs font-mono font-semibold text-indigo-700">
-                  {inspectedGame.tournamentName} · Ronde {inspectedGame.round} ({inspectedGame.datePlayed})
-                </div>
-                <h3 className="text-base font-extrabold text-slate-900 mt-0.5">
-                  Contre {inspectedGame.opponentName} ({inspectedGame.opponentElo} Elo)
-                </h3>
-                {inspectedGame.openingName && (
-                  <p className="text-xs text-slate-600 mt-0.5 font-medium">
-                    <span className="font-mono font-bold text-indigo-700">
-                      {inspectedGame.ecoCode ? `${inspectedGame.ecoCode} — ` : ''}
-                    </span>
-                    {inspectedGame.openingName}
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => onSetInspectedGame(null)}
-                className="p-1 text-slate-400 hover:text-slate-700 rounded"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {inspectedGame.pgn ? (
-              <ChessboardViewer
-                pgn={inspectedGame.pgn}
-                initialOrientation={inspectedGame.playerColor}
-              />
-            ) : (
-              <div className="p-8 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center space-y-2">
-                <p className="text-sm font-semibold text-slate-800">
-                  Aucun coup PGN renseigné pour cette partie
-                </p>
-                <p className="text-xs text-slate-500">
-                  Le PGN est facultatif. Vous pouvez cliquer sur « Modifier » si vous souhaitez ajouter les coups plus tard.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => openEditGameModal(inspectedGame)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-white border border-slate-300 rounded-lg"
-                >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  Ajouter le PGN de cette partie
-                </button>
-              </div>
-            )}
-
-            {/* Bouton Analyse Chess.com */}
-            <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
-              <button
-                type="button"
-                onClick={() => handleAnalyzeOnChessCom(inspectedGame)}
-                className="flex-1 inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors"
-              >
-                <Copy className="w-3.5 h-3.5" />
-                {inspectedGame.pgn
-                  ? 'Copier le PGN & Analyser sur Chess.com'
-                  : 'Ouvrir l’échiquier d’analyse Chess.com'}
-                <ExternalLink className="w-3.5 h-3.5" />
-              </button>
-            </div>
-
-            {inspectedGame.keyMomentNote && (
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 leading-relaxed">
-                <div className="font-bold text-slate-900 mb-1">Mes notes sur la partie :</div>
-                {inspectedGame.keyMomentNote}
-              </div>
-            )}
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
 
+      {/* MODALE DÉTAILS COMPLETS DE LA PARTIE & ÉCHIQUIER */}
+      {inspectedGame && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl max-w-4xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <div className="text-xs font-mono font-bold text-indigo-700">
+                  {inspectedGame.tournamentName} · Ronde {inspectedGame.round} · {inspectedGame.datePlayed}
+                </div>
+                <h2 className="text-xl font-extrabold text-slate-900 mt-1">
+                  Contre {formatPlayerNameLastFirst(inspectedGame.opponentName)} ({inspectedGame.opponentElo} Elo)
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const g = inspectedGame;
+                    onSetInspectedGame(null);
+                    openEditGameModal(g);
+                  }}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl"
+                >
+                  <Edit3 className="w-3.5 h-3.5" />
+                  Modifier
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setGameToDelete(inspectedGame)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Supprimer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSetInspectedGame(null)}
+                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+              {/* Colonne gauche : Toutes les infos de la partie */}
+              <div className="lg:col-span-5 space-y-4">
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="text-slate-500 font-semibold">Mon Résultat</div>
+                    <div
+                      className={`text-base font-mono font-extrabold mt-0.5 ${
+                        inspectedGame.playerScore === 1
+                          ? 'text-emerald-700'
+                          : inspectedGame.playerScore === 0
+                          ? 'text-rose-700'
+                          : 'text-amber-800'
+                      }`}
+                    >
+                      {inspectedGame.playerScore === 1
+                        ? 'Victoire (1 pt)'
+                        : inspectedGame.playerScore === 0.5
+                        ? 'Nulle (½ pt)'
+                        : 'Défaite (0 pt)'}
+                    </div>
+                  </div>
+
+                  <div
+                    className={`p-3 rounded-xl border ${
+                      inspectedGame.eloChange >= 0
+                        ? 'bg-emerald-50 border-emerald-200'
+                        : 'bg-rose-50 border-rose-200'
+                    }`}
+                  >
+                    <div className="text-slate-600 font-semibold">
+                      Elo Gagné (K={inspectedGame.kFactorUsed})
+                    </div>
+                    <div
+                      className={`text-base font-mono font-extrabold mt-0.5 ${
+                        inspectedGame.eloChange >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                      }`}
+                    >
+                      {inspectedGame.eloChange >= 0
+                        ? `+${inspectedGame.eloChange.toFixed(1)}`
+                        : inspectedGame.eloChange.toFixed(1)}{' '}
+                      pts
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="text-slate-500 font-semibold">Ma Couleur & Elo</div>
+                    <div className="font-mono font-bold text-slate-900 mt-0.5">
+                      {inspectedGame.playerColor === 'White' ? 'Blancs' : 'Noirs'} ({inspectedGame.playerElo} Elo)
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="text-slate-500 font-semibold">Cadence</div>
+                    <div className="font-mono font-bold text-indigo-950 mt-0.5">
+                      {inspectedGame.timeControl === 'Standard'
+                        ? 'Classique'
+                        : inspectedGame.timeControl === 'Rapid'
+                        ? 'Rapide'
+                        : 'Blitz'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Infos complètes sur l'adversaire */}
+                <div className="p-4 bg-indigo-50/40 border border-indigo-100 rounded-xl space-y-2 text-xs">
+                  <div className="font-extrabold text-indigo-950">
+                    Informations sur l’adversaire
+                  </div>
+                  <div className="space-y-1 text-slate-700 font-mono">
+                    <div>
+                      Nom :{' '}
+                      <strong className="text-slate-900">
+                        {formatPlayerNameLastFirst(inspectedGame.opponentName)}
+                      </strong>
+                    </div>
+                    <div>
+                      Classement lors de la ronde :{' '}
+                      <strong className="text-slate-900">{inspectedGame.opponentElo} Elo</strong>
+                    </div>
+                    {inspectedGame.opponentFideId && (
+                      <div>ID FIDE : {inspectedGame.opponentFideId}</div>
+                    )}
+                    {inspectedGame.opponentFfeId && (
+                      <div>ID FFE : {inspectedGame.opponentFfeId}</div>
+                    )}
+                    <div>Fédération : {inspectedGame.opponentFederation || 'FRA'}</div>
+                  </div>
+                  {findOpponentRecordId(inspectedGame) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const oppId = findOpponentRecordId(inspectedGame);
+                        if (oppId) {
+                          onSetInspectedGame(null);
+                          onSelectOpponentProfile(oppId);
+                        }
+                      }}
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs font-extrabold text-indigo-700 hover:underline cursor-pointer"
+                    >
+                      Voir la fiche complète de ce joueur →
+                    </button>
+                  )}
+                </div>
+
+                {inspectedGame.openingName && (
+                  <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                    <div className="font-bold text-slate-700">Ouverture jouée :</div>
+                    <div className="font-semibold text-indigo-950 mt-0.5">
+                      {inspectedGame.ecoCode ? `${inspectedGame.ecoCode} — ` : ''}
+                      {inspectedGame.openingName}
+                    </div>
+                  </div>
+                )}
+
+                {inspectedGame.keyMomentNote && (
+                  <div className="p-3.5 bg-amber-50/50 border border-amber-200 rounded-xl text-xs text-slate-800 leading-relaxed">
+                    <div className="font-extrabold text-amber-950 mb-1">
+                      Mes notes sur la partie :
+                    </div>
+                    {inspectedGame.keyMomentNote}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => handleAnalyzeOnChessCom(inspectedGame)}
+                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-extrabold text-white bg-emerald-700 hover:bg-emerald-800 rounded-xl transition-colors cursor-pointer"
+                >
+                  {copiedPgnId === inspectedGame.id ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      PGN copié ! Ouverture de Chess.com...
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5" />
+                      {inspectedGame.pgn
+                        ? 'Copier le PGN & Analyser sur Chess.com'
+                        : 'Ouvrir l’échiquier d’analyse Chess.com'}
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {/* Colonne droite : Échiquier interactif PGN */}
+              <div className="lg:col-span-7">
+                {inspectedGame.pgn ? (
+                  <ChessboardViewer
+                    pgn={inspectedGame.pgn}
+                    initialOrientation={inspectedGame.playerColor}
+                  />
+                ) : (
+                  <div className="p-10 bg-slate-50 border border-dashed border-slate-300 rounded-xl text-center space-y-3">
+                    <p className="text-sm font-bold text-slate-800">
+                      Aucun coup PGN renseigné pour cette partie
+                    </p>
+                    <p className="text-xs text-slate-500">
+                      Le PGN est facultatif. Vous pouvez cliquer sur « Modifier » si vous souhaitez ajouter les coups plus tard.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const g = inspectedGame;
+                        onSetInspectedGame(null);
+                        openEditGameModal(g);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-900 bg-white border border-indigo-200 rounded-xl hover:bg-indigo-50"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Ajouter le PGN de cette partie
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Ajouter / Modifier une Partie */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-extrabold text-indigo-950">
                   {editingGameId ? 'Modifier la partie' : 'Ajouter une partie'}
                 </h2>
                 <p className="text-xs text-slate-500">
@@ -698,7 +815,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
             <form onSubmit={handleSubmit} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Tournoi *
                   </label>
                   <select
@@ -712,7 +829,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       }
                     }}
                     required
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
                   >
                     {tournaments.map((t) => (
                       <option key={t.id} value={t.id}>
@@ -723,18 +840,18 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Ronde</label>
+                    <label className="block font-bold text-slate-700 mb-1">Ronde</label>
                     <input
                       type="number"
                       min={1}
                       max={30}
                       value={round}
                       onChange={(e) => setRound(Number(e.target.value))}
-                      className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 font-mono font-bold border border-slate-300 rounded-xl"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Date</label>
+                    <label className="block font-bold text-slate-700 mb-1">Date</label>
                     <input
                       type="date"
                       value={datePlayed}
@@ -745,25 +862,26 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 </div>
               </div>
 
-              {/* Adversaire avec liaison automatique */}
+              {/* Adversaire avec sélection par ordre alphabétique "NOM, Prénom" (sans ID) */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <span className="font-bold text-slate-900">
-                    Adversaire (Nom ↔ ID FIDE ↔ ID FFE)
+                  <span className="font-extrabold text-indigo-950 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    Adversaire affronté
                   </span>
-                  {opponents.length > 0 && (
+                  {sortedOpponents.length > 0 && (
                     <select
                       value={opponentId}
                       onChange={(e) => {
                         const found = opponents.find((o) => o.id === e.target.value);
                         if (found) linkOpponentFields(found);
                       }}
-                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg"
+                      className="px-3 py-2 bg-white border border-indigo-200 rounded-xl font-bold text-indigo-950 focus:outline-none focus:border-indigo-600"
                     >
-                      <option value="">-- Choisir parmi mes adversaires --</option>
-                      {opponents.map((o) => (
+                      <option value="">-- Sélectionner un joueur déjà affronté (A → Z) --</option>
+                      {sortedOpponents.map((o) => (
                         <option key={o.id} value={o.id}>
-                          {o.name} (Std {o.standardElo || o.elo} · Rap {o.rapidElo || o.elo} · Blz {o.blitzElo || o.elo})
+                          {formatPlayerNameLastFirst(o.name)}
                         </option>
                       ))}
                     </select>
@@ -772,8 +890,8 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nom de l’adversaire *
+                    <label className="block font-bold text-slate-700 mb-1">
+                      NOM, Prénom de l’adversaire *
                     </label>
                     <input
                       type="text"
@@ -783,16 +901,19 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                         const m = opponents.find(
                           (o) =>
                             o.name.trim().toLowerCase() ===
-                            e.target.value.trim().toLowerCase()
+                              e.target.value.trim().toLowerCase() ||
+                            formatPlayerNameLastFirst(o.name).toLowerCase() ===
+                              e.target.value.trim().toLowerCase()
                         );
                         if (m) linkOpponentFields(m);
                       }}
+                      placeholder="Ex: VANDENBERGHE, Lucas"
                       required
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-semibold"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">ID FIDE</label>
+                    <label className="block font-bold text-slate-700 mb-1">ID FIDE</label>
                     <input
                       type="text"
                       value={opponentFideId}
@@ -806,7 +927,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">ID FFE</label>
+                    <label className="block font-bold text-slate-700 mb-1">ID FFE</label>
                     <input
                       type="text"
                       value={opponentFfeId}
@@ -823,9 +944,9 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Elo Adverse *
                     </label>
                     <input
@@ -835,11 +956,11 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       value={opponentElo}
                       onChange={(e) => setOpponentElo(Number(e.target.value))}
                       required
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-xl"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Titre FIDE
                     </label>
                     <select
@@ -855,61 +976,95 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Ma Couleur
                     </label>
                     <select
                       value={playerColor}
                       onChange={(e) => setPlayerColor(e.target.value as PlayerColor)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 font-bold bg-white border border-slate-300 rounded-xl"
                     >
                       <option value="White">Blancs</option>
                       <option value="Black">Noirs</option>
                     </select>
                   </div>
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Mon Elo</label>
+                    <input
+                      type="number"
+                      min={800}
+                      max={3500}
+                      value={playerElo}
+                      onChange={(e) => setPlayerElo(Number(e.target.value))}
+                      className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-xl"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Résultat</label>
-                  <select
-                    value={result}
-                    onChange={(e) => setResult(e.target.value as GameResult)}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
-                  >
-                    <option value="1-0">1-0 (Blancs gagnent)</option>
-                    <option value="1/2-1/2">½-½ (Partie nulle)</option>
-                    <option value="0-1">0-1 (Noirs gagnent)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Mon Elo</label>
-                  <input
-                    type="number"
-                    min={800}
-                    max={3500}
-                    value={playerElo}
-                    onChange={(e) => setPlayerElo(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
-                  />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Elo Gagné / Perdu
+              {/* MON SCORE (Toujours par rapport à moi : 3 boutons Victoire / Nulle / Défaite) */}
+              <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-indigo-950 text-xs">
+                    Mon résultat dans cette partie (toujours par rapport à moi) *
                   </label>
-                  <div className="px-3 py-2 font-mono font-bold bg-slate-100 border border-slate-200 rounded-xl">
-                    {computedEloDelta >= 0
-                      ? `+${computedEloDelta.toFixed(1)}`
-                      : computedEloDelta.toFixed(1)}{' '}
-                    pts
-                  </div>
+                  <span className="font-mono text-xs font-extrabold">
+                    Elo Gagné / Perdu :{' '}
+                    <span
+                      className={
+                        computedEloDelta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                      }
+                    >
+                      {computedEloDelta >= 0
+                        ? `+${computedEloDelta.toFixed(1)}`
+                        : computedEloDelta.toFixed(1)}{' '}
+                      pts
+                    </span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(1)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 1
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm scale-[1.01]'
+                        : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'
+                    }`}
+                  >
+                    1 · Victoire
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(0.5)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 0.5
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-[1.01]'
+                        : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
+                    }`}
+                  >
+                    2 · Nulle
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(0)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 0
+                        ? 'bg-rose-600 text-white border-rose-700 shadow-sm scale-[1.01]'
+                        : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
+                    }`}
+                  >
+                    3 · Défaite
+                  </button>
                 </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Ouverture (facultatif)
                   </label>
                   <div className="flex gap-2">
@@ -944,7 +1099,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Lien Chess.com pour analyser (facultatif)
                   </label>
                   <input
@@ -959,8 +1114,8 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    PGN de la partie (Facultatif — surtout pour parties classiques)
+                  <label className="block font-bold text-slate-700 mb-1">
+                    PGN de la partie (Facultatif)
                   </label>
                   <textarea
                     rows={3}
@@ -971,7 +1126,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Notes personnelles (facultatif)
                   </label>
                   <textarea
@@ -988,14 +1143,14 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 disabled:opacity-50"
+                  className="px-5 py-2.5 text-xs font-extrabold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {isSubmitting ? 'Enregistrement...' : 'Enregistrer la partie'}
                 </button>
@@ -1004,6 +1159,48 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UNE PARTIE (3 secondes) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(gameToDelete)}
+        title="Supprimer cette partie ?"
+        subtitle="Vous êtes sur le point de supprimer définitivement cette partie de votre historique."
+        itemName={
+          gameToDelete
+            ? `Ronde ${gameToDelete.round} vs ${formatPlayerNameLastFirst(gameToDelete.opponentName)}`
+            : ''
+        }
+        details={
+          gameToDelete
+            ? [
+                { label: 'Tournoi', value: gameToDelete.tournamentName },
+                { label: 'Date & Ronde', value: `Ronde ${gameToDelete.round} · ${gameToDelete.datePlayed}` },
+                {
+                  label: 'Mon résultat',
+                  value:
+                    gameToDelete.playerScore === 1
+                      ? 'Victoire (1 pt)'
+                      : gameToDelete.playerScore === 0.5
+                      ? 'Nulle (½ pt)'
+                      : 'Défaite (0 pt)',
+                },
+                {
+                  label: 'Variation Elo',
+                  value: `${gameToDelete.eloChange >= 0 ? '+' : ''}${gameToDelete.eloChange.toFixed(1)} pts`,
+                },
+              ]
+            : []
+        }
+        onCancel={() => setGameToDelete(null)}
+        onConfirm={async () => {
+          if (!gameToDelete) return;
+          if (inspectedGame?.id === gameToDelete.id) {
+            onSetInspectedGame(null);
+          }
+          await onDeleteGame(gameToDelete.id);
+          setGameToDelete(null);
+        }}
+      />
     </div>
   );
 };

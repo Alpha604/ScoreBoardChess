@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import {
-  ChevronDown,
-  ChevronUp,
+  Calendar,
   Edit3,
   ExternalLink,
   Eye,
+  Info,
+  MapPin,
   Plus,
   Trash2,
   Trophy,
@@ -15,7 +16,6 @@ import {
 import {
   FideGame,
   FideTitle,
-  GameResult,
   OpponentPlayer,
   PlayerColor,
   PlayerProfile,
@@ -28,9 +28,14 @@ import {
   calculateFideEloChange,
   calculateFidePerformanceRating,
   ECO_OPENINGS_CATALOG,
-  getPlayerScoreFromResult,
+  getResultFromPlayerScore,
 } from '../utils/fideMath';
-import { getOpponentEloForCadence } from '../utils/fideValidation';
+import {
+  formatPlayerNameLastFirst,
+  getOpponentEloForCadence,
+  sortOpponentsAlphabetically,
+} from '../utils/fideValidation';
+import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 
 interface TournamentsSectionProps {
   tournaments: Tournament[];
@@ -65,11 +70,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   onSelectOpponentProfile,
   onOpenGameInViewer,
 }) => {
-  const [expandedTournamentId, setExpandedTournamentId] = useState<string | null>(
-    tournaments[0]?.id || null
-  );
+  // Modale Détails complets d'un Tournoi
+  const [detailTournamentId, setDetailTournamentId] = useState<string | null>(null);
 
-  // Modal Tournoi
+  // Modale Créer / Modifier un Tournoi
   const [isTourneyModalOpen, setIsTourneyModalOpen] = useState(false);
   const [editingTourneyId, setEditingTourneyId] = useState<string | undefined>(undefined);
   const [name, setName] = useState('');
@@ -88,7 +92,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const [notes, setNotes] = useState('');
   const [isSubmittingTourney, setIsSubmittingTourney] = useState(false);
 
-  // Modal Ajouter une Partie dans un Tournoi
+  // Modale Ajouter / Modifier une Partie dans un Tournoi
   const [isGameModalOpen, setIsGameModalOpen] = useState(false);
   const [activeTournamentForGame, setActiveTournamentForGame] = useState<Tournament | null>(null);
   const [editingGameId, setEditingGameId] = useState<string | undefined>(undefined);
@@ -103,7 +107,8 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const [opponentTitle, setOpponentTitle] = useState<FideTitle>('None');
   const [opponentElo, setOpponentElo] = useState(1600);
   const [opponentFederation, setOpponentFederation] = useState('FRA');
-  const [result, setResult] = useState<GameResult>('1-0');
+  // Score toujours par rapport à moi : 1 = Victoire, 0.5 = Nulle, 0 = Défaite
+  const [myScore, setMyScore] = useState<0 | 0.5 | 1>(1);
   const [kFactorUsed, setKFactorUsed] = useState<10 | 20 | 40>(profile?.kFactor || 20);
   const [ecoCode, setEcoCode] = useState('');
   const [openingName, setOpeningName] = useState('');
@@ -111,6 +116,16 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const [chessComUrl, setChessComUrl] = useState('');
   const [keyMomentNote, setKeyMomentNote] = useState('');
   const [isSubmittingGame, setIsSubmittingGame] = useState(false);
+
+  // Modales de confirmation de suppression (3s)
+  const [tourneyToDelete, setTourneyToDelete] = useState<Tournament | null>(null);
+  const [gameToDelete, setGameToDelete] = useState<FideGame | null>(null);
+
+  // Joueurs affrontés triés par ordre alphabétique "NOM, Prénom"
+  const sortedOpponents = useMemo(
+    () => sortOpponentsAlphabetically(opponents),
+    [opponents]
+  );
 
   // Ouvrir Modal Nouveau Tournoi
   const openNewTourneyModal = () => {
@@ -152,7 +167,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     setIsTourneyModalOpen(true);
   };
 
-  // Ouvrir Modal Ajouter Partie dans ce Tournoi
+  // Ouvrir Modal Ajouter / Modifier Partie dans ce Tournoi
   const openAddGameInTourney = (t: Tournament, existingGame?: FideGame) => {
     setActiveTournamentForGame(t);
     if (existingGame) {
@@ -162,13 +177,13 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
       setPlayerColor(existingGame.playerColor);
       setPlayerElo(existingGame.playerElo);
       setOpponentId(existingGame.opponentId || '');
-      setOpponentName(existingGame.opponentName);
+      setOpponentName(formatPlayerNameLastFirst(existingGame.opponentName));
       setOpponentFideId(existingGame.opponentFideId);
       setOpponentFfeId(existingGame.opponentFfeId || '');
       setOpponentTitle(existingGame.opponentTitle);
       setOpponentElo(existingGame.opponentElo);
       setOpponentFederation(existingGame.opponentFederation);
-      setResult(existingGame.result);
+      setMyScore(existingGame.playerScore);
       setKFactorUsed(existingGame.kFactorUsed);
       setEcoCode(existingGame.ecoCode);
       setOpeningName(existingGame.openingName);
@@ -189,7 +204,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
       setOpponentTitle('None');
       setOpponentElo(1600);
       setOpponentFederation('FRA');
-      setResult('1-0');
+      setMyScore(1);
       setKFactorUsed(profile?.kFactor || 20);
       setEcoCode('');
       setOpeningName('');
@@ -201,11 +216,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   };
 
   // Auto-liaison bidirectionnelle : Nom <-> ID FIDE <-> ID FFE
-  // Sélectionne automatiquement l'Elo du joueur dans la cadence du tournoi
   const linkOpponentFields = (opp: OpponentPlayer) => {
     const cadence = activeTournamentForGame?.timeControl || 'Standard';
     setOpponentId(opp.id);
-    setOpponentName(opp.name);
+    setOpponentName(formatPlayerNameLastFirst(opp.name));
     setOpponentFideId(opp.fideId || '');
     setOpponentFfeId(opp.ffeId || '');
     setOpponentElo(getOpponentEloForCadence(opp, cadence));
@@ -216,7 +230,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const handleOpponentNameChange = (val: string) => {
     setOpponentName(val);
     const match = opponents.find(
-      (o) => o.name.trim().toLowerCase() === val.trim().toLowerCase()
+      (o) =>
+        o.name.trim().toLowerCase() === val.trim().toLowerCase() ||
+        formatPlayerNameLastFirst(o.name).toLowerCase() === val.trim().toLowerCase()
     );
     if (match) linkOpponentFields(match);
   };
@@ -249,7 +265,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
           o.ffeId &&
           o.ffeId.toUpperCase() === opponentFfeId.toUpperCase()) ||
         (opponentName &&
-          o.name.trim().toLowerCase() === opponentName.trim().toLowerCase())
+          (o.name.trim().toLowerCase() === opponentName.trim().toLowerCase() ||
+            formatPlayerNameLastFirst(o.name).toLowerCase() ===
+              opponentName.trim().toLowerCase()))
     );
     if (!match) return null;
 
@@ -276,14 +294,14 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     };
   }, [opponents, games, opponentId, opponentFideId, opponentFfeId, opponentName, editingGameId]);
 
-  const computedScore = useMemo(
-    () => getPlayerScoreFromResult(result, playerColor),
-    [result, playerColor]
+  const computedResult = useMemo(
+    () => getResultFromPlayerScore(myScore, playerColor),
+    [myScore, playerColor]
   );
 
   const computedEloDelta = useMemo(
-    () => calculateFideEloChange(playerElo, opponentElo, computedScore, kFactorUsed),
-    [playerElo, opponentElo, computedScore, kFactorUsed]
+    () => calculateFideEloChange(playerElo, opponentElo, myScore, kFactorUsed),
+    [playerElo, opponentElo, myScore, kFactorUsed]
   );
 
   // Enrichir chaque tournoi avec ses parties et ses stats
@@ -303,6 +321,8 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
         const draws = tGames.filter((g) => g.playerScore === 0.5).length;
         const losses = tGames.filter((g) => g.playerScore === 0).length;
         const winPct = playedCount > 0 ? Math.round((wins / playedCount) * 100) : 0;
+        const drawPct = playedCount > 0 ? Math.round((draws / playedCount) * 100) : 0;
+        const lossPct = playedCount > 0 ? Math.max(0, 100 - winPct - drawPct) : 0;
 
         return {
           ...t,
@@ -315,9 +335,16 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
           draws,
           losses,
           winPct,
+          drawPct,
+          lossPct,
         };
       });
   }, [tournaments, games]);
+
+  const detailTournament = useMemo(
+    () => enrichedTournaments.find((t) => t.id === detailTournamentId) || null,
+    [enrichedTournaments, detailTournamentId]
+  );
 
   const handleSaveTourneySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -363,14 +390,14 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
           playerColor,
           playerElo: Number(playerElo),
           opponentId: matchedOpponentStats?.match.id || opponentId || undefined,
-          opponentName,
+          opponentName: formatPlayerNameLastFirst(opponentName),
           opponentFideId,
           opponentFfeId,
           opponentTitle,
           opponentElo: Number(opponentElo),
           opponentFederation,
-          result,
-          playerScore: computedScore,
+          result: computedResult,
+          playerScore: myScore,
           eloChange: computedEloDelta,
           kFactorUsed,
           ecoCode,
@@ -389,7 +416,6 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     }
   };
 
-  // Helper pour trouver l'ID d'un joueur dans la liste Opponents afin d'ouvrir sa fiche
   const findOpponentRecordId = (g: FideGame): string | null => {
     const found = opponents.find(
       (o) =>
@@ -403,432 +429,531 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     return found ? found.id : null;
   };
 
-  // Helper pour calculer le taux de victoire contre cet adversaire
-  const getVsWinRateLabel = (g: FideGame): string => {
-    const oppGames = games.filter(
-      (item) =>
-        (g.opponentFideId && item.opponentFideId === g.opponentFideId) ||
-        (g.opponentFfeId &&
-          item.opponentFfeId &&
-          item.opponentFfeId.toUpperCase() === g.opponentFfeId.toUpperCase()) ||
-        item.opponentName.trim().toLowerCase() === g.opponentName.trim().toLowerCase()
-    );
-    if (oppGames.length === 0) return '—';
-    const wins = oppGames.filter((item) => item.playerScore === 1).length;
-    return `${Math.round((wins / oppGames.length) * 100)}% (${wins}/${oppGames.length})`;
-  };
-
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
         <div>
           <h1 className="text-2xl font-extrabold tracking-tight text-indigo-950">
-            Mes Tournois FIDE & FFE
+            Mes Tournois FIDE
           </h1>
           <p className="text-sm text-slate-600 mt-1">
-            Créez vos tournois, renseignez votre classement final, vos parties (PGN facultatif) et voyez immédiatement les points Elo gagnés et votre performance.
+            Vue épurée de vos tournois. Cliquez sur « Voir toutes les infos & parties » pour ouvrir la fiche complète d’un tournoi.
           </p>
         </div>
         <button
           type="button"
           onClick={openNewTourneyModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors whitespace-nowrap shadow-2xs"
+          className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-sm transition-colors whitespace-nowrap cursor-pointer"
         >
           <Plus className="w-4 h-4" />
           Créer un nouveau tournoi
         </button>
       </div>
 
+      {/* Liste épurée des Tournois (sans surcharge) */}
       {enrichedTournaments.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-3">
-          <Trophy className="w-10 h-10 text-amber-500 mx-auto" />
-          <h3 className="text-base font-bold text-slate-900">
-            Aucun tournoi enregistré pour le moment
-          </h3>
-          <p className="text-sm text-slate-500 max-w-md mx-auto">
-            Cliquez sur « Créer un nouveau tournoi » pour rentrer les infos de votre tournoi, vos adversaires et calculer votre performance.
-          </p>
+        <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center space-y-4">
+          <Trophy className="w-10 h-10 text-indigo-500 mx-auto" />
+          <div className="space-y-1">
+            <h3 className="text-base font-bold text-slate-900">
+              Aucun tournoi enregistré pour le moment
+            </h3>
+            <p className="text-sm text-slate-600">
+              Ajoutez votre premier tournoi pour y rentrer vos parties et calculer automatiquement vos gains d’Elo.
+            </p>
+          </div>
           <button
             type="button"
             onClick={openNewTourneyModal}
-            className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700"
+            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700"
           >
             <Plus className="w-4 h-4" />
-            Créer mon premier tournoi
+            Ajouter mon premier tournoi
           </button>
         </div>
       ) : (
-        <div className="space-y-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {enrichedTournaments.map((t) => {
-            const isExpanded = expandedTournamentId === t.id;
-            const topAccentBorder =
+            const topBorderClass =
               t.timeControl === 'Rapid'
                 ? 'border-t-4 border-t-amber-500'
                 : t.timeControl === 'Blitz'
                 ? 'border-t-4 border-t-sky-500'
                 : 'border-t-4 border-t-indigo-600';
-            const cadenceColorText =
+
+            const cadenceBadgeClass =
               t.timeControl === 'Rapid'
-                ? 'text-amber-700 font-bold'
+                ? 'bg-amber-100 text-amber-900 border border-amber-300'
                 : t.timeControl === 'Blitz'
-                ? 'text-sky-700 font-bold'
-                : 'text-indigo-700 font-bold';
+                ? 'bg-sky-100 text-sky-900 border border-sky-300'
+                : 'bg-indigo-100 text-indigo-900 border border-indigo-300';
 
             return (
               <div
                 key={t.id}
-                className={`bg-white border border-slate-200 ${topAccentBorder} rounded-2xl overflow-hidden shadow-2xs`}
+                className={`bg-white border border-slate-200 ${topBorderClass} rounded-2xl p-5 shadow-sm flex flex-col justify-between gap-4 hover:border-indigo-300 transition-colors`}
               >
-                {/* En-tête lisible et coloré du Tournoi */}
-                <div className="p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                  <div className="space-y-2 max-w-2xl">
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-medium">
-                      <span className="font-mono text-slate-800 font-semibold">
-                        {t.startDate} → {t.endDate}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-semibold text-slate-800">{t.location}</span>
-                      <span aria-hidden="true">·</span>
-                      <span className={cadenceColorText}>
-                        Cadence{' '}
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span
+                        className={`inline-block text-[11px] font-bold px-2.5 py-0.5 rounded-md ${cadenceBadgeClass}`}
+                      >
                         {t.timeControl === 'Standard'
                           ? 'Classique'
                           : t.timeControl === 'Rapid'
                           ? 'Rapide'
-                          : 'Blitz'}{' '}
-                        ({t.timeControlDetails})
+                          : 'Blitz'}
                       </span>
-                      {t.totalPlayers && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="inline-flex items-center gap-1 text-slate-700 font-semibold">
-                            <Users className="w-3.5 h-3.5 text-indigo-600" />
-                            {t.totalPlayers} joueurs
+                      <h2 className="text-lg font-extrabold text-slate-900 mt-1.5">
+                        {t.name}
+                      </h2>
+                      <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 mt-1">
+                        <span className="inline-flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          {t.location}
+                        </span>
+                        <span className="inline-flex items-center gap-1 font-mono">
+                          <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                          {t.startDate}
+                        </span>
+                        {t.finalRank && (
+                          <span className="font-bold text-indigo-700">
+                            Classé {t.finalRank}e
+                            {t.totalPlayers ? ` / ${t.totalPlayers}` : ''}
                           </span>
-                        </>
-                      )}
-                    </div>
-
-                    <h2
-                      onClick={() =>
-                        setExpandedTournamentId(isExpanded ? null : t.id)
-                      }
-                      className="text-xl font-extrabold text-slate-900 cursor-pointer hover:text-indigo-700 transition-colors"
-                    >
-                      {t.name}
-                    </h2>
-
-                    {t.notes && (
-                      <p className="text-sm text-slate-600">{t.notes}</p>
-                    )}
-                  </div>
-
-                  {/* Bloc de Statistiques Clés Colorées du Tournoi */}
-                  <div className="flex flex-wrap items-center gap-4 lg:gap-6 shrink-0">
-                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono tabular-nums">
-                      <div className="px-3.5 py-2.5 bg-amber-50/70 border border-amber-200 rounded-xl text-center">
-                        <div className="text-[11px] font-sans font-bold text-amber-900">
-                          Classement final
-                        </div>
-                        <div className="text-base font-extrabold text-amber-800 mt-0.5">
-                          {t.finalRank
-                            ? `${t.finalRank}e${
-                                t.totalPlayers ? ` / ${t.totalPlayers}` : ''
-                              }`
-                            : 'En cours'}
-                        </div>
-                      </div>
-
-                      <div className="px-3.5 py-2.5 bg-indigo-50/70 border border-indigo-200 rounded-xl text-center">
-                        <div className="text-[11px] font-sans font-bold text-indigo-900">
-                          Score & Rondes
-                        </div>
-                        <div className="text-base font-extrabold text-indigo-700 mt-0.5">
-                          {t.score} / {t.playedCount}
-                        </div>
-                        <div className="text-[10px] font-semibold mt-0.5">
-                          <span className="text-emerald-700">+{t.wins}</span>{' '}
-                          <span className="text-amber-700">={t.draws}</span>{' '}
-                          <span className="text-rose-700">-{t.losses}</span>
-                        </div>
-                      </div>
-
-                      <div className="px-3.5 py-2.5 bg-violet-50/70 border border-violet-200 rounded-xl text-center">
-                        <div className="text-[11px] font-sans font-bold text-violet-900">
-                          Performance
-                        </div>
-                        <div className="text-base font-extrabold text-violet-700 mt-0.5">
-                          {t.perfRating || '—'}
-                        </div>
-                        <div className="text-[10px] text-violet-800/80">
-                          Départ : {t.startingElo}
-                        </div>
-                      </div>
-
-                      <div
-                        className={`px-3.5 py-2.5 border rounded-xl text-center ${
-                          t.eloNet >= 0
-                            ? 'bg-emerald-50/70 border-emerald-200'
-                            : 'bg-rose-50/70 border-rose-200'
-                        }`}
-                      >
-                        <div
-                          className={`text-[11px] font-sans font-bold ${
-                            t.eloNet >= 0 ? 'text-emerald-900' : 'text-rose-900'
-                          }`}
-                        >
-                          Elo gagné
-                        </div>
-                        <div
-                          className={`text-base font-extrabold mt-0.5 ${
-                            t.eloNet > 0
-                              ? 'text-emerald-700'
-                              : t.eloNet < 0
-                              ? 'text-rose-700'
-                              : 'text-slate-800'
-                          }`}
-                        >
-                          {t.eloNet > 0
-                            ? `+${t.eloNet.toFixed(1)}`
-                            : t.eloNet.toFixed(1)}{' '}
-                          pts
-                        </div>
+                        )}
                       </div>
                     </div>
 
-                    {/* Boutons d'action du Tournoi */}
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => openAddGameInTourney(t)}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors whitespace-nowrap"
-                      >
-                        <Plus className="w-4 h-4" />
-                        Ajouter une partie
-                      </button>
+                    <div className="flex items-center gap-1 shrink-0">
                       <button
                         type="button"
                         onClick={() => openEditTourneyModal(t)}
-                        className="p-2 text-indigo-700 hover:text-indigo-950 bg-indigo-50 hover:bg-indigo-100 rounded-xl"
-                        title="Modifier les infos du tournoi"
+                        className="p-2 text-slate-500 hover:text-indigo-700 rounded-lg hover:bg-indigo-50 transition-colors"
+                        title="Modifier ce tournoi"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button
                         type="button"
-                        onClick={() => onDeleteTournament(t.id)}
-                        className="p-2 text-slate-500 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 rounded-xl"
+                        onClick={() => setTourneyToDelete(t)}
+                        className="p-2 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50 transition-colors"
                         title="Supprimer ce tournoi"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedTournamentId(isExpanded ? null : t.id)
-                        }
-                        className="p-2 text-slate-700 hover:text-slate-900 bg-slate-100 rounded-xl"
-                        title="Afficher / Masquer les parties du tournoi"
+                    </div>
+                  </div>
+
+                  {/* Résumé épuré en 3 blocs clés */}
+                  <div className="grid grid-cols-3 gap-2.5 pt-1">
+                    <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl text-center">
+                      <div className="text-[11px] font-semibold text-slate-500">Score</div>
+                      <div className="text-base font-mono font-extrabold text-slate-900 mt-0.5">
+                        {t.score} / {t.playedCount}
+                      </div>
+                    </div>
+
+                    <div className="p-2.5 bg-violet-50/60 border border-violet-200 rounded-xl text-center">
+                      <div className="text-[11px] font-bold text-violet-800">Perf. FIDE</div>
+                      <div className="text-base font-mono font-extrabold text-violet-950 mt-0.5">
+                        {t.perfRating || '—'}
+                      </div>
+                    </div>
+
+                    <div
+                      className={`p-2.5 rounded-xl border text-center ${
+                        t.eloNet >= 0
+                          ? 'bg-emerald-50/70 border-emerald-200'
+                          : 'bg-rose-50/70 border-rose-200'
+                      }`}
+                    >
+                      <div
+                        className={`text-[11px] font-bold ${
+                          t.eloNet >= 0 ? 'text-emerald-800' : 'text-rose-800'
+                        }`}
                       >
-                        {isExpanded ? (
-                          <ChevronUp className="w-4 h-4" />
-                        ) : (
-                          <ChevronDown className="w-4 h-4" />
-                        )}
-                      </button>
+                        Elo Gagné
+                      </div>
+                      <div
+                        className={`text-base font-mono font-extrabold mt-0.5 ${
+                          t.eloNet >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                        }`}
+                      >
+                        {t.eloNet >= 0 ? `+${t.eloNet.toFixed(1)}` : t.eloNet.toFixed(1)}
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Liste des Parties & Adversaires de ce Tournoi */}
-                {isExpanded && (
-                  <div className="border-t border-slate-200 bg-slate-50/70 p-5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-950">
-                        Parties jouées & Adversaires affrontés dans ce tournoi ({t.playedCount} / {t.totalRounds} rondes)
-                      </h3>
-                      <button
-                        type="button"
-                        onClick={() => openAddGameInTourney(t)}
-                        className="text-xs font-bold text-indigo-700 hover:underline inline-flex items-center gap-1"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Ajouter une ronde à ce tournoi
-                      </button>
-                    </div>
+                {/* Boutons d'action : Modale Détails & Ajouter une partie */}
+                <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDetailTournamentId(t.id)}
+                    className="flex-1 inline-flex items-center justify-center gap-2 px-3.5 py-2.5 text-xs font-extrabold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer"
+                  >
+                    <Info className="w-4 h-4 text-indigo-600" />
+                    Voir toutes les infos & parties ({t.playedCount})
+                  </button>
 
-                    {t.tGames.length === 0 ? (
-                      <div className="p-6 bg-white border border-dashed border-indigo-200 rounded-xl text-center text-xs text-slate-600">
-                        Aucune partie enregistrée dans ce tournoi. Cliquez sur « Ajouter une partie » pour rentrer vos rondes.
-                      </div>
-                    ) : (
-                      <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto">
-                        <table className="w-full text-left border-collapse">
-                          <thead>
-                            <tr className="border-b border-indigo-100 bg-indigo-50/50 text-xs font-bold text-indigo-950">
-                              <th className="py-3 px-4">Ronde</th>
-                              <th className="py-3 px-4">Ma Couleur</th>
-                              <th className="py-3 px-4">Adversaire (Nom + ID FIDE / FFE)</th>
-                              <th className="py-3 px-4 text-right">Elo Adv.</th>
-                              <th className="py-3 px-4 text-center">Taux Victoire vs lui</th>
-                              <th className="py-3 px-4 text-center">Résultat</th>
-                              <th className="py-3 px-4 text-right">Elo Gagné</th>
-                              <th className="py-3 px-4 text-right">Partie / Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody className="divide-y divide-slate-200 text-sm">
-                            {t.tGames.map((g) => {
-                              const oppRecordId = findOpponentRecordId(g);
-                              const rowResultBorder =
-                                g.playerScore === 1
-                                  ? 'border-l-4 border-l-emerald-500'
-                                  : g.playerScore === 0
-                                  ? 'border-l-4 border-l-rose-500'
-                                  : 'border-l-4 border-l-amber-400';
-                              return (
-                                <tr
-                                  key={g.id}
-                                  className={`hover:bg-slate-50 transition-colors ${rowResultBorder}`}
-                                >
-                                  <td className="py-3 px-4 font-mono text-xs font-bold text-slate-900">
-                                    Ronde {g.round}
-                                    <div className="text-[11px] font-normal text-slate-500">
-                                      {g.datePlayed}
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 text-xs font-bold">
-                                    {g.playerColor === 'White' ? (
-                                      <span className="text-slate-800">♔ Blancs</span>
-                                    ) : (
-                                      <span className="text-indigo-950">♚ Noirs</span>
-                                    )}
-                                  </td>
-                                  <td className="py-3 px-4">
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        if (oppRecordId) onSelectOpponentProfile(oppRecordId);
-                                      }}
-                                      className="font-bold text-slate-900 hover:text-indigo-700 hover:underline text-left"
-                                    >
-                                      {g.opponentTitle !== 'None' && (
-                                        <span className="text-amber-700 font-mono mr-1">
-                                          {g.opponentTitle}
-                                        </span>
-                                      )}
-                                      {g.opponentName}
-                                    </button>
-                                    <div className="text-[11px] font-mono text-slate-500">
-                                      <span className="text-indigo-700 font-medium">
-                                        {g.opponentFideId ? `FIDE: ${g.opponentFideId}` : 'FIDE: —'}
-                                      </span>
-                                      {' · '}
-                                      <span className="text-amber-800 font-medium">
-                                        {g.opponentFfeId ? `FFE: ${g.opponentFfeId}` : 'FFE: —'}
-                                      </span>
-                                    </div>
-                                  </td>
-                                  <td className="py-3 px-4 text-right font-mono font-bold text-indigo-700">
-                                    {g.opponentElo}
-                                  </td>
-                                  <td className="py-3 px-4 text-center font-mono text-xs font-bold text-slate-700">
-                                    {getVsWinRateLabel(g)}
-                                  </td>
-                                  <td className="py-3 px-4 text-center font-mono text-xs font-extrabold">
-                                    <span
-                                      className={
-                                        g.playerScore === 1
-                                          ? 'text-emerald-700'
-                                          : g.playerScore === 0
-                                          ? 'text-rose-700'
-                                          : 'text-amber-700'
-                                      }
-                                    >
-                                      {g.playerScore === 1
-                                        ? 'Victoire (1pt)'
-                                        : g.playerScore === 0.5
-                                        ? 'Nulle (½)'
-                                        : 'Défaite (0pt)'}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-4 text-right font-mono font-extrabold">
-                                    <span
-                                      className={
-                                        g.eloChange >= 0
-                                          ? 'text-emerald-700'
-                                          : 'text-rose-700'
-                                      }
-                                    >
-                                      {g.eloChange >= 0
-                                        ? `+${g.eloChange.toFixed(1)}`
-                                        : g.eloChange.toFixed(1)}
-                                    </span>
-                                  </td>
-                                  <td className="py-3 px-4 text-right whitespace-nowrap">
-                                    <div className="inline-flex items-center gap-1.5">
-                                      <button
-                                        type="button"
-                                        onClick={() => onOpenGameInViewer(g)}
-                                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
-                                      >
-                                        <Eye className="w-3.5 h-3.5" />
-                                        {g.pgn ? 'Voir PGN' : 'Détails'}
-                                      </button>
-                                      {g.chessComUrl && (
-                                        <a
-                                          href={g.chessComUrl}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
-                                          title="Analyser sur Chess.com"
-                                        >
-                                          <ExternalLink className="w-3.5 h-3.5" />
-                                        </a>
-                                      )}
-                                      <button
-                                        type="button"
-                                        onClick={() => openAddGameInTourney(t, g)}
-                                        className="p-1.5 text-slate-500 hover:text-indigo-700 rounded-lg hover:bg-indigo-50"
-                                        title="Modifier cette ronde"
-                                      >
-                                        <Edit3 className="w-3.5 h-3.5" />
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => onDeleteGame(g.id)}
-                                        className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50"
-                                        title="Supprimer cette ronde"
-                                      >
-                                        <Trash2 className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => openAddGameInTourney(t)}
+                    className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2.5 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-2xs transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ajouter une partie
+                  </button>
+                </div>
               </div>
             );
           })}
         </div>
       )}
 
+      {/* MODALE DÉTAILS COMPLETS D'UN TOURNOI (Infos + Toutes ses parties) */}
+      {detailTournament && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl max-w-5xl w-full p-6 space-y-6 max-h-[92vh] overflow-y-auto shadow-xl">
+            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className={`text-xs font-bold px-2.5 py-1 rounded-lg ${
+                      detailTournament.timeControl === 'Rapid'
+                        ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                        : detailTournament.timeControl === 'Blitz'
+                        ? 'bg-sky-100 text-sky-900 border border-sky-300'
+                        : 'bg-indigo-100 text-indigo-900 border border-indigo-300'
+                    }`}
+                  >
+                    {detailTournament.timeControl === 'Standard'
+                      ? 'Classique'
+                      : detailTournament.timeControl === 'Rapid'
+                      ? 'Rapide'
+                      : 'Blitz'}{' '}
+                    ({detailTournament.timeControlDetails})
+                  </span>
+                  <span className="text-xs font-mono text-slate-600">
+                    {detailTournament.location} · Du {detailTournament.startDate} au{' '}
+                    {detailTournament.endDate}
+                  </span>
+                </div>
+                <h2 className="text-xl font-extrabold text-indigo-950 mt-2">
+                  {detailTournament.name}
+                </h2>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openAddGameInTourney(detailTournament)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-xs cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Ajouter une partie
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openEditTourneyModal(detailTournament)}
+                  className="p-2 text-slate-600 hover:text-indigo-700 bg-slate-100 hover:bg-indigo-50 rounded-xl"
+                  title="Modifier les infos du tournoi"
+                >
+                  <Edit3 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTourneyToDelete(detailTournament)}
+                  className="p-2 text-slate-600 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 rounded-xl"
+                  title="Supprimer ce tournoi"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDetailTournamentId(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 rounded-xl"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Grille complète des statistiques du tournoi */}
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                <div className="text-[11px] font-semibold text-slate-500">
+                  Parties & Format
+                </div>
+                <div className="text-base font-mono font-extrabold text-slate-900 mt-0.5">
+                  {detailTournament.playedCount} / {detailTournament.totalRounds} rondes
+                </div>
+                <div className="text-[11px] text-slate-500 font-mono">
+                  Format {detailTournament.format} · Elo dép. {detailTournament.startingElo}
+                </div>
+              </div>
+
+              <div className="p-3 bg-indigo-50/50 border border-indigo-200 rounded-xl">
+                <div className="text-[11px] font-bold text-indigo-800">Score & Bilan</div>
+                <div className="text-base font-mono font-extrabold text-indigo-950 mt-0.5">
+                  {detailTournament.score} / {detailTournament.playedCount} pts
+                </div>
+                <div className="text-[11px] font-mono space-x-1.5 mt-0.5">
+                  <span className="text-emerald-700 font-bold">{detailTournament.wins}V</span>
+                  <span className="text-amber-700 font-bold">{detailTournament.draws}N</span>
+                  <span className="text-rose-700 font-bold">{detailTournament.losses}D</span>
+                </div>
+              </div>
+
+              <div className="p-3 bg-violet-50/60 border border-violet-200 rounded-xl">
+                <div className="text-[11px] font-bold text-violet-800">
+                  Performance FIDE
+                </div>
+                <div className="text-base font-mono font-extrabold text-violet-950 mt-0.5">
+                  {detailTournament.perfRating || '—'}
+                </div>
+                <div className="text-[11px] text-violet-700 font-medium">
+                  Taux victoire : {detailTournament.winPct}%
+                </div>
+              </div>
+
+              <div
+                className={`p-3 rounded-xl border ${
+                  detailTournament.eloNet >= 0
+                    ? 'bg-emerald-50/70 border-emerald-200'
+                    : 'bg-rose-50/70 border-rose-200'
+                }`}
+              >
+                <div
+                  className={`text-[11px] font-bold ${
+                    detailTournament.eloNet >= 0 ? 'text-emerald-800' : 'text-rose-800'
+                  }`}
+                >
+                  Elo Gagné / Perdu
+                </div>
+                <div
+                  className={`text-base font-mono font-extrabold mt-0.5 ${
+                    detailTournament.eloNet >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                  }`}
+                >
+                  {detailTournament.eloNet >= 0
+                    ? `+${detailTournament.eloNet.toFixed(1)}`
+                    : detailTournament.eloNet.toFixed(1)}{' '}
+                  pts
+                </div>
+              </div>
+
+              <div className="p-3 bg-amber-50/50 border border-amber-200 rounded-xl">
+                <div className="text-[11px] font-bold text-amber-900">
+                  Classement Final
+                </div>
+                <div className="text-base font-mono font-extrabold text-amber-950 mt-0.5">
+                  {detailTournament.finalRank ? `${detailTournament.finalRank}e` : '—'}
+                  {detailTournament.totalPlayers ? (
+                    <span className="text-xs font-normal text-amber-800">
+                      {' '}
+                      / {detailTournament.totalPlayers} j.
+                    </span>
+                  ) : (
+                    ''
+                  )}
+                </div>
+                <div className="text-[11px] text-amber-800 flex items-center gap-1">
+                  <Users className="w-3 h-3" />
+                  {detailTournament.totalPlayers
+                    ? `${detailTournament.totalPlayers} participants`
+                    : 'Non renseigné'}
+                </div>
+              </div>
+            </div>
+
+            {detailTournament.notes && (
+              <div className="p-3.5 bg-indigo-50/40 border border-indigo-100 rounded-xl text-xs text-slate-700">
+                <strong className="text-indigo-950">Notes sur le tournoi :</strong>{' '}
+                {detailTournament.notes}
+              </div>
+            )}
+
+            {/* Liste des rondes / parties du tournoi */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-extrabold text-indigo-950">
+                  Parties jouées dans ce tournoi ({detailTournament.tGames.length})
+                </h3>
+              </div>
+
+              {detailTournament.tGames.length === 0 ? (
+                <div className="p-8 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-2">
+                  <p className="text-sm text-slate-600">
+                    Aucune partie enregistrée dans ce tournoi pour le moment.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => openAddGameInTourney(detailTournament)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-indigo-600 rounded-lg hover:bg-indigo-700"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Ajouter la Ronde 1
+                  </button>
+                </div>
+              ) : (
+                <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                  <table className="w-full text-left border-collapse">
+                    <thead>
+                      <tr className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-bold text-indigo-950">
+                        <th className="py-2.5 px-4">Ronde</th>
+                        <th className="py-2.5 px-4">Adversaire (NOM, Prénom)</th>
+                        <th className="py-2.5 px-4 text-right">Elo Adv.</th>
+                        <th className="py-2.5 px-4">Ma Couleur</th>
+                        <th className="py-2.5 px-4 text-center">Mon Résultat</th>
+                        <th className="py-2.5 px-4 text-right">Elo Gagné</th>
+                        <th className="py-2.5 px-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-200 text-sm">
+                      {detailTournament.tGames.map((g) => {
+                        const oppRecordId = findOpponentRecordId(g);
+                        const rowAccent =
+                          g.playerScore === 1
+                            ? 'border-l-4 border-l-emerald-500 bg-emerald-50/15'
+                            : g.playerScore === 0
+                            ? 'border-l-4 border-l-rose-500 bg-rose-50/15'
+                            : 'border-l-4 border-l-amber-500 bg-amber-50/15';
+                        return (
+                          <tr
+                            key={g.id}
+                            className={`${rowAccent} hover:bg-slate-50 transition-colors`}
+                          >
+                            <td className="py-3 px-4 font-mono text-xs font-bold text-indigo-950">
+                              Ronde {g.round}
+                              <div className="text-[11px] font-normal text-slate-500">
+                                {g.datePlayed}
+                              </div>
+                            </td>
+                            <td className="py-3 px-4">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  if (oppRecordId) {
+                                    setDetailTournamentId(null);
+                                    onSelectOpponentProfile(oppRecordId);
+                                  }
+                                }}
+                                className="font-bold text-indigo-950 hover:text-indigo-600 hover:underline text-left cursor-pointer"
+                              >
+                                {formatPlayerNameLastFirst(g.opponentName)}
+                              </button>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-bold text-slate-900">
+                              {g.opponentElo}
+                            </td>
+                            <td className="py-3 px-4 text-xs font-semibold">
+                              <span className="inline-flex items-center gap-1.5">
+                                <span
+                                  className={`w-3 h-3 rounded-sm border ${
+                                    g.playerColor === 'White'
+                                      ? 'bg-white border-slate-400'
+                                      : 'bg-slate-900 border-slate-900'
+                                  }`}
+                                />
+                                {g.playerColor === 'White' ? 'Blancs' : 'Noirs'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-center font-mono text-xs font-extrabold">
+                              <span
+                                className={
+                                  g.playerScore === 1
+                                    ? 'text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-md border border-emerald-200'
+                                    : g.playerScore === 0
+                                    ? 'text-rose-700 bg-rose-50 px-2.5 py-1 rounded-md border border-rose-200'
+                                    : 'text-amber-800 bg-amber-50 px-2.5 py-1 rounded-md border border-amber-200'
+                                }
+                              >
+                                {g.playerScore === 1
+                                  ? 'Victoire'
+                                  : g.playerScore === 0.5
+                                  ? 'Nulle'
+                                  : 'Défaite'}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right font-mono font-extrabold">
+                              <span
+                                className={
+                                  g.eloChange >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                                }
+                              >
+                                {g.eloChange >= 0
+                                  ? `+${g.eloChange.toFixed(1)}`
+                                  : g.eloChange.toFixed(1)}
+                              </span>
+                            </td>
+                            <td className="py-3 px-4 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setDetailTournamentId(null);
+                                    onOpenGameInViewer(g);
+                                  }}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-bold text-indigo-800 bg-indigo-50 hover:bg-indigo-100 rounded-lg"
+                                >
+                                  <Eye className="w-3.5 h-3.5" />
+                                  Détails & PGN
+                                </button>
+                                {g.chessComUrl && (
+                                  <a
+                                    href={g.chessComUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="p-1.5 text-emerald-700 hover:bg-emerald-50 rounded-lg"
+                                    title="Analyser sur Chess.com"
+                                  >
+                                    <ExternalLink className="w-3.5 h-3.5" />
+                                  </a>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => openAddGameInTourney(detailTournament, g)}
+                                  className="p-1.5 text-slate-500 hover:text-indigo-700 rounded-lg hover:bg-indigo-50"
+                                  title="Modifier cette partie"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setGameToDelete(g)}
+                                  className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50"
+                                  title="Supprimer cette partie"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL 1 : CRÉER / MODIFIER UN TOURNOI */}
       {isTourneyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-2xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl max-w-2xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-extrabold text-indigo-950">
                   {editingTourneyId ? 'Modifier le tournoi' : 'Créer un nouveau tournoi'}
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Renseignez la cadence, le nombre de joueurs et votre classement final. Vous pourrez ensuite y ajouter toutes vos parties.
+                  Renseignez la cadence, le nombre de joueurs et votre classement final.
                 </p>
               </div>
               <button
@@ -843,7 +968,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
             <form onSubmit={handleSaveTourneySubmit} className="space-y-4 text-xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Nom du tournoi *
                   </label>
                   <input
@@ -856,7 +981,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Ville / Lieu *
                   </label>
                   <input
@@ -872,7 +997,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Cadence *
                   </label>
                   <select
@@ -893,7 +1018,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                         }
                       }
                     }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl bg-white"
                   >
                     <option value="Standard">Classique (Standard FIDE)</option>
                     <option value="Rapid">Rapide</option>
@@ -901,7 +1026,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   </select>
                 </div>
                 <div className="sm:col-span-2">
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Détail de la cadence (Pendule)
                   </label>
                   <input
@@ -916,7 +1041,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Nombre de rondes
                   </label>
                   <input
@@ -929,7 +1054,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Nombre de joueurs
                   </label>
                   <input
@@ -943,7 +1068,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Mon classement final
                   </label>
                   <input
@@ -957,7 +1082,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Mon Elo au départ
                   </label>
                   <input
@@ -973,7 +1098,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Date de début
                   </label>
                   <input
@@ -984,7 +1109,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Date de fin
                   </label>
                   <input
@@ -997,7 +1122,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">
+                <label className="block font-bold text-slate-700 mb-1">
                   Bilan personnel / Notes sur le tournoi (facultatif)
                 </label>
                 <textarea
@@ -1013,14 +1138,14 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsTourneyModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingTourney}
-                  className="px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 disabled:opacity-50"
+                  className="px-5 py-2.5 text-xs font-extrabold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {isSubmittingTourney ? 'Enregistrement...' : 'Enregistrer le tournoi'}
                 </button>
@@ -1032,15 +1157,15 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
       {/* MODAL 2 : AJOUTER / MODIFIER UNE PARTIE DANS CE TOURNOI */}
       {isGameModalOpen && activeTournamentForGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
+          <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-xl">
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-lg font-extrabold text-indigo-950">
                   {editingGameId ? 'Modifier la partie' : 'Ajouter une partie au tournoi'}
                 </h2>
                 <p className="text-xs text-slate-600">
-                  Tournoi : <strong>{activeTournamentForGame.name}</strong> ({activeTournamentForGame.timeControl}). Cette partie sera automatiquement visible dans l’onglet « Parties ».
+                  Tournoi : <strong>{activeTournamentForGame.name}</strong> ({activeTournamentForGame.timeControl}).
                 </p>
               </div>
               <button
@@ -1053,57 +1178,49 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
             </div>
 
             <form onSubmit={handleSaveGameSubmit} className="space-y-4 text-xs">
-              {/* Sélection / Liaison automatique de l'Adversaire (Nom <-> ID FIDE <-> ID FFE) */}
+              {/* Sélection / Liaison automatique de l'Adversaire (Trié A-Z sous la forme "NOM, Prénom" sans ID) */}
               <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                    <UserCheck className="w-4 h-4 text-slate-700" />
-                    Adversaire affronté (relié par Nom, ID FIDE ou ID FFE)
+                  <div className="font-extrabold text-indigo-950 flex items-center gap-1.5">
+                    <UserCheck className="w-4 h-4 text-indigo-600" />
+                    Adversaire affronté
                   </div>
 
-                  {opponents.length > 0 && (
+                  {sortedOpponents.length > 0 && (
                     <select
                       value={opponentId}
                       onChange={(e) => {
                         const chosen = opponents.find((o) => o.id === e.target.value);
                         if (chosen) linkOpponentFields(chosen);
                       }}
-                      className="px-3 py-1.5 bg-white border border-slate-300 rounded-lg font-medium text-slate-800"
+                      className="px-3 py-2 bg-white border border-indigo-200 rounded-xl font-bold text-indigo-950 focus:outline-none focus:border-indigo-600"
                     >
-                      <option value="">-- Choisir un joueur déjà affronté --</option>
-                      {opponents.map((o) => {
-                        const cadenceElo = getOpponentEloForCadence(
-                          o,
-                          activeTournamentForGame.timeControl
-                        );
-                        return (
-                          <option key={o.id} value={o.id}>
-                            {o.name} (Elo {activeTournamentForGame.timeControl}: {cadenceElo}){' '}
-                            {o.fideId ? `· FIDE ${o.fideId}` : ''}{' '}
-                            {o.ffeId ? `· FFE ${o.ffeId}` : ''}
-                          </option>
-                        );
-                      })}
+                      <option value="">-- Sélectionner un joueur déjà affronté (A → Z) --</option>
+                      {sortedOpponents.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {formatPlayerNameLastFirst(o.name)}
+                        </option>
+                      ))}
                     </select>
                   )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                   <div className="sm:col-span-2">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Nom & Prénom de l’adversaire *
+                    <label className="block font-bold text-slate-700 mb-1">
+                      NOM, Prénom de l’adversaire *
                     </label>
                     <input
                       type="text"
                       value={opponentName}
                       onChange={(e) => handleOpponentNameChange(e.target.value)}
-                      placeholder="Tapez son nom (ex: Dubois, Quentin)"
+                      placeholder="Ex: DUBOIS, Quentin"
                       required
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl font-semibold"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       ID FIDE (auto-relié)
                     </label>
                     <input
@@ -1115,7 +1232,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       ID FFE (auto-relié)
                     </label>
                     <input
@@ -1130,7 +1247,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Elo adverse (
                       {activeTournamentForGame.timeControl === 'Standard'
                         ? 'Classique'
@@ -1146,11 +1263,11 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                       value={opponentElo}
                       onChange={(e) => setOpponentElo(Number(e.target.value))}
                       required
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-xl"
+                      className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-xl"
                     />
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Titre FIDE adverse
                     </label>
                     <select
@@ -1166,7 +1283,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                     </select>
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">
+                    <label className="block font-bold text-slate-700 mb-1">
                       Fédération
                     </label>
                     <input
@@ -1182,12 +1299,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 {matchedOpponentStats && (
                   <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-emerald-900 flex flex-wrap items-center justify-between gap-2">
                     <span>
-                      Joueur reconnu : <strong>{matchedOpponentStats.match.name}</strong>{' '}
-                      <span className="font-mono text-[11px] text-emerald-800">
-                        (Classique: {matchedOpponentStats.match.standardElo || matchedOpponentStats.match.elo} · Rapide: {matchedOpponentStats.match.rapidElo || matchedOpponentStats.match.elo} · Blitz: {matchedOpponentStats.match.blitzElo || matchedOpponentStats.match.elo})
-                      </span>
+                      Joueur reconnu :{' '}
+                      <strong>{formatPlayerNameLastFirst(matchedOpponentStats.match.name)}</strong>
                     </span>
-                    <span className="font-mono font-semibold">
+                    <span className="font-mono font-bold">
                       Historique contre lui : {matchedOpponentStats.winRate}% de victoires (+
                       {matchedOpponentStats.wins} ={matchedOpponentStats.draws} -
                       {matchedOpponentStats.losses})
@@ -1196,21 +1311,21 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 )}
               </div>
 
-              {/* Ronde, Couleur, Résultat & Calcul Elo */}
-              <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 items-end">
+              {/* Ronde, Date, Ma Couleur & Mon Elo */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Ronde n°</label>
+                  <label className="block font-bold text-slate-700 mb-1">Ronde n°</label>
                   <input
                     type="number"
                     min={1}
                     max={30}
                     value={round}
                     onChange={(e) => setRound(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
+                    className="w-full px-3 py-2 font-mono font-bold border border-slate-300 rounded-xl"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Date</label>
+                  <label className="block font-bold text-slate-700 mb-1">Date</label>
                   <input
                     type="date"
                     value={datePlayed}
@@ -1219,72 +1334,93 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Ma Couleur</label>
+                  <label className="block font-bold text-slate-700 mb-1">Ma Couleur</label>
                   <select
                     value={playerColor}
                     onChange={(e) => setPlayerColor(e.target.value as PlayerColor)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                    className="w-full px-3 py-2 font-bold border border-slate-300 rounded-xl bg-white"
                   >
                     <option value="White">Blancs</option>
                     <option value="Black">Noirs</option>
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Mon Elo</label>
+                  <label className="block font-bold text-slate-700 mb-1">Mon Elo</label>
                   <input
                     type="number"
                     min={800}
                     max={3500}
                     value={playerElo}
                     onChange={(e) => setPlayerElo(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
+                    className="w-full px-3 py-2 font-mono font-bold border border-slate-300 rounded-xl"
                   />
-                </div>
-                <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Résultat</label>
-                  <select
-                    value={result}
-                    onChange={(e) => setResult(e.target.value as GameResult)}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
-                  >
-                    <option value="1-0">1-0 (Blancs gagnent)</option>
-                    <option value="1/2-1/2">½-½ (Partie nulle)</option>
-                    <option value="0-1">0-1 (Noirs gagnent)</option>
-                  </select>
                 </div>
               </div>
 
-              {/* Bandeau Elo gagné en direct */}
-              <div className="p-3 bg-slate-900 text-white rounded-xl flex flex-wrap items-center justify-between gap-2 font-mono text-xs">
-                <span>
-                  Résultat pour vous :{' '}
-                  <strong>
-                    {computedScore === 1
-                      ? 'VICTOIRE (1 pt)'
-                      : computedScore === 0.5
-                      ? 'NULLE (0.5 pt)'
-                      : 'DÉFAITE (0 pt)'}
-                  </strong>
-                </span>
-                <span>
-                  Elo gagné/perdu sur cette partie (K={kFactorUsed}) :{' '}
-                  <strong
-                    className={
-                      computedEloDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
-                    }
+              {/* MON SCORE (Toujours par rapport à moi : 3 boutons Victoire / Nulle / Défaite) */}
+              <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="font-extrabold text-indigo-950 text-xs">
+                    Mon résultat dans cette partie (toujours par rapport à moi) *
+                  </label>
+                  <span className="font-mono text-xs font-extrabold">
+                    Variation Elo estimée (K={kFactorUsed}) :{' '}
+                    <span
+                      className={
+                        computedEloDelta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                      }
+                    >
+                      {computedEloDelta >= 0
+                        ? `+${computedEloDelta.toFixed(1)}`
+                        : computedEloDelta.toFixed(1)}{' '}
+                      pts
+                    </span>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-3 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(1)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 1
+                        ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm scale-[1.01]'
+                        : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'
+                    }`}
                   >
-                    {computedEloDelta >= 0
-                      ? `+${computedEloDelta.toFixed(1)}`
-                      : computedEloDelta.toFixed(1)}{' '}
-                    pts Elo
-                  </strong>
-                </span>
+                    1 · Victoire
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(0.5)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 0.5
+                        ? 'bg-amber-500 text-white border-amber-600 shadow-sm scale-[1.01]'
+                        : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
+                    }`}
+                  >
+                    2 · Nulle
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setMyScore(0)}
+                    className={`py-3 px-4 rounded-xl font-extrabold text-sm border-2 transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                      myScore === 0
+                        ? 'bg-rose-600 text-white border-rose-700 shadow-sm scale-[1.01]'
+                        : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
+                    }`}
+                  >
+                    3 · Défaite
+                  </button>
+                </div>
               </div>
 
               {/* Ouverture & Lien Chess.com (Facultatifs) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Ouverture jouée (facultatif)
                   </label>
                   <div className="flex gap-2">
@@ -1319,7 +1455,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 </div>
 
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Lien d’analyse Chess.com (facultatif)
                   </label>
                   <input
@@ -1335,19 +1471,19 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
               {/* PGN Facultatif & Notes */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
-                    Coups de la partie PGN (Non obligatoire — utile en classique)
+                  <label className="block font-bold text-slate-700 mb-1">
+                    Coups de la partie PGN (Facultatif)
                   </label>
                   <textarea
                     rows={3}
                     value={pgn}
                     onChange={(e) => setPgn(e.target.value)}
-                    placeholder="Laissez vide si vous n'avez pas noté les coups, ou collez votre PGN (1. e4 e5 2. Nf3...)"
+                    placeholder="Collez votre PGN (1. e4 e5 2. Nf3...)"
                     className="w-full px-3 py-2 font-mono border border-slate-300 rounded-xl"
                   />
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">
+                  <label className="block font-bold text-slate-700 mb-1">
                     Notes sur la partie (facultatif)
                   </label>
                   <textarea
@@ -1364,14 +1500,14 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsGameModalOpen(false)}
-                  className="px-4 py-2 text-xs font-medium text-slate-700 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-xl"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={isSubmittingGame}
-                  className="px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 disabled:opacity-50"
+                  className="px-5 py-2.5 text-xs font-extrabold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
                 >
                   {isSubmittingGame ? 'Enregistrement...' : 'Enregistrer la partie'}
                 </button>
@@ -1380,6 +1516,92 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UN TOURNOI (3 secondes) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(tourneyToDelete)}
+        title="Supprimer ce tournoi et ses parties ?"
+        subtitle="Vous êtes sur le point de supprimer définitivement un tournoi ainsi que l'ensemble des parties qui y sont rattachées."
+        itemName={tourneyToDelete?.name || ''}
+        details={
+          tourneyToDelete
+            ? [
+                { label: 'Lieu & Dates', value: `${tourneyToDelete.location} (${tourneyToDelete.startDate})` },
+                {
+                  label: 'Cadence',
+                  value:
+                    tourneyToDelete.timeControl === 'Standard'
+                      ? 'Classique'
+                      : tourneyToDelete.timeControl === 'Rapid'
+                      ? 'Rapide'
+                      : 'Blitz',
+                },
+                {
+                  label: 'Parties associées supprimées',
+                  value: `${games.filter((g) => g.tournamentId === tourneyToDelete.id).length} partie(s)`,
+                },
+                {
+                  label: 'Mon Elo de départ',
+                  value: `${tourneyToDelete.startingElo} Elo`,
+                },
+              ]
+            : []
+        }
+        warningMessage={
+          tourneyToDelete
+            ? `Attention : ce tournoi ainsi que ses ${
+                games.filter((g) => g.tournamentId === tourneyToDelete.id).length
+              } partie(s) enregistrée(s) seront définitivement effacés.`
+            : undefined
+        }
+        onCancel={() => setTourneyToDelete(null)}
+        onConfirm={async () => {
+          if (!tourneyToDelete) return;
+          const id = tourneyToDelete.id;
+          if (detailTournamentId === id) setDetailTournamentId(null);
+          await onDeleteTournament(id);
+          setTourneyToDelete(null);
+        }}
+      />
+
+      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UNE PARTIE (3 secondes) */}
+      <ConfirmDeleteModal
+        isOpen={Boolean(gameToDelete)}
+        title="Supprimer cette partie ?"
+        subtitle="Vous êtes sur le point de supprimer définitivement cette ronde enregistrée."
+        itemName={
+          gameToDelete
+            ? `Ronde ${gameToDelete.round} vs ${formatPlayerNameLastFirst(gameToDelete.opponentName)}`
+            : ''
+        }
+        details={
+          gameToDelete
+            ? [
+                { label: 'Tournoi', value: gameToDelete.tournamentName },
+                { label: 'Date & Ronde', value: `Ronde ${gameToDelete.round} · ${gameToDelete.datePlayed}` },
+                {
+                  label: 'Mon résultat',
+                  value:
+                    gameToDelete.playerScore === 1
+                      ? 'Victoire (1 pt)'
+                      : gameToDelete.playerScore === 0.5
+                      ? 'Nulle (½ pt)'
+                      : 'Défaite (0 pt)',
+                },
+                {
+                  label: 'Variation Elo',
+                  value: `${gameToDelete.eloChange >= 0 ? '+' : ''}${gameToDelete.eloChange.toFixed(1)} pts`,
+                },
+              ]
+            : []
+        }
+        onCancel={() => setGameToDelete(null)}
+        onConfirm={async () => {
+          if (!gameToDelete) return;
+          await onDeleteGame(gameToDelete.id);
+          setGameToDelete(null);
+        }}
+      />
     </div>
   );
 };

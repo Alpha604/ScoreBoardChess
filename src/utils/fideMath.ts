@@ -20,6 +20,19 @@ export function getPlayerScoreFromResult(result: GameResult, playerColor: Player
   return playerColor === 'Black' ? 1 : 0;
 }
 
+/**
+ * Convertit le score du point de vue du joueur (1 = Victoire, 0.5 = Nulle, 0 = Défaite)
+ * et sa couleur (White / Black) en notation FIDE officielle ('1-0', '1/2-1/2', '0-1').
+ */
+export function getResultFromPlayerScore(
+  playerScore: 0 | 0.5 | 1,
+  playerColor: PlayerColor
+): GameResult {
+  if (playerScore === 0.5) return '1/2-1/2';
+  if (playerScore === 1) return playerColor === 'White' ? '1-0' : '0-1';
+  return playerColor === 'White' ? '0-1' : '1-0';
+}
+
 export function calculateFideEloChange(
   playerElo: number,
   opponentElo: number,
