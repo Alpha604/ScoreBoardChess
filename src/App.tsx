@@ -25,6 +25,7 @@ import { TournamentsSection } from './components/TournamentsSection';
 import {
   clearSession,
   createEmptyDatabase,
+  deduplicateOpponents,
   fetchDatabaseFromJsonBin,
   FideLedgerDatabase,
   getSavedSession,
@@ -43,6 +44,7 @@ import {
 } from './types/fide';
 import { calculateFidePerformanceRating } from './utils/fideMath';
 import {
+  formatPlayerNameLastFirst,
   sanitizeFideGamePayload,
   sanitizeMonthlyRatingPayload,
   sanitizeOpponentPayload,
@@ -104,14 +106,17 @@ export default function App() {
     }
   }, [session.isAuthenticated]);
 
-  const persistUpdate = async (nextDb: FideLedgerDatabase) => {
-    const syncedOpponents = syncOpponentsWithGames(
-      nextDb.opponents || [],
-      nextDb.games || []
-    );
+  const persistUpdate = async (
+    nextDb: FideLedgerDatabase,
+    options?: { skipAutoCreateOpponentsFromGames?: boolean }
+  ) => {
+    const finalOpponents = options?.skipAutoCreateOpponentsFromGames
+      ? deduplicateOpponents(nextDb.opponents || [])
+      : syncOpponentsWithGames(nextDb.opponents || [], nextDb.games || []);
+
     const updatedDb: FideLedgerDatabase = {
       ...nextDb,
-      opponents: syncedOpponents,
+      opponents: finalOpponents,
     };
     setDbState(updatedDb);
     setIsSyncing(true);
@@ -169,9 +174,23 @@ export default function App() {
     existingId?: string
   ) => {
     const clean = sanitizeOpponentPayload(input);
-    const nextOpponents = existingId
+
+    // Si on modifie un joueur existant, ou si un joueur correspond déjà au même ID
+    const targetExisting = existingId
+      ? opponents.find((o) => o.id === existingId)
+      : opponents.find(
+          (o) =>
+            (clean.fideId && o.fideId === clean.fideId) ||
+            (clean.ffeId && o.ffeId.toUpperCase() === clean.ffeId.toUpperCase()) ||
+            formatPlayerNameLastFirst(o.name).toLowerCase() ===
+              clean.name.toLowerCase()
+        );
+
+    const targetId = targetExisting?.id || existingId;
+
+    const nextOpponents = targetId
       ? opponents.map((o) =>
-          o.id === existingId ? { ...clean, id: existingId } : o
+          o.id === targetId ? { ...clean, id: targetId } : o
         )
       : [
           ...opponents,
@@ -181,18 +200,55 @@ export default function App() {
           },
         ];
 
-    await persistUpdate({
-      ...dbState,
-      opponents: nextOpponents,
-    });
+    // Met aussi à jour les parties reliées à ce joueur pour qu'elles gardent le nouveau nom/ID sans recréer l'ancien joueur
+    const nextGames = targetExisting
+      ? games.map((g) => {
+          const isSameOpponent =
+            (g.opponentId && g.opponentId === targetExisting.id) ||
+            (targetExisting.fideId &&
+              g.opponentFideId &&
+              g.opponentFideId === targetExisting.fideId) ||
+            (targetExisting.ffeId &&
+              g.opponentFfeId &&
+              g.opponentFfeId.toUpperCase() ===
+                targetExisting.ffeId.toUpperCase()) ||
+            g.opponentName.trim().toLowerCase() ===
+              targetExisting.name.trim().toLowerCase() ||
+            formatPlayerNameLastFirst(g.opponentName).toLowerCase() ===
+              formatPlayerNameLastFirst(targetExisting.name).toLowerCase();
+
+          if (!isSameOpponent) return g;
+          return {
+            ...g,
+            opponentId: targetExisting.id,
+            opponentName: clean.name,
+            opponentFideId: clean.fideId || g.opponentFideId,
+            opponentFfeId: clean.ffeId || g.opponentFfeId,
+            opponentTitle: clean.title,
+            opponentFederation: clean.federation || g.opponentFederation,
+          };
+        })
+      : games;
+
+    await persistUpdate(
+      {
+        ...dbState,
+        opponents: nextOpponents,
+        games: nextGames,
+      },
+      { skipAutoCreateOpponentsFromGames: true }
+    );
   };
 
   const handleDeleteOpponent = async (id: string) => {
     const nextOpponents = opponents.filter((o) => o.id !== id);
-    await persistUpdate({
-      ...dbState,
-      opponents: nextOpponents,
-    });
+    await persistUpdate(
+      {
+        ...dbState,
+        opponents: nextOpponents,
+      },
+      { skipAutoCreateOpponentsFromGames: true }
+    );
   };
 
   const handleSaveTournament = async (
@@ -212,17 +268,33 @@ export default function App() {
           },
         ];
 
+    // Met aussi à jour le nom et la cadence du tournoi sur ses parties associées
+    const nextGames = existingId
+      ? games.map((g) =>
+          g.tournamentId === existingId
+            ? {
+                ...g,
+                tournamentName: clean.name,
+                timeControl: clean.timeControl,
+              }
+            : g
+        )
+      : games;
+
     await persistUpdate({
       ...dbState,
       tournaments: nextTournaments,
+      games: nextGames,
     });
   };
 
   const handleDeleteTournament = async (id: string) => {
     const nextTournaments = tournaments.filter((t) => t.id !== id);
+    const nextGames = games.filter((g) => g.tournamentId !== id);
     await persistUpdate({
       ...dbState,
       tournaments: nextTournaments,
+      games: nextGames,
     });
   };
 
@@ -242,6 +314,10 @@ export default function App() {
             id: `g_${Date.now().toString(36)}`,
           },
         ];
+
+    if (existingId && inspectedGame?.id === existingId) {
+      setInspectedGame({ ...clean, id: existingId });
+    }
 
     await persistUpdate({
       ...dbState,
@@ -879,7 +955,7 @@ export default function App() {
                                   {opp.title}
                                 </span>
                               )}
-                              {opp.name}
+                              {formatPlayerNameLastFirst(opp.name)}
                             </div>
                             <div className="text-xs font-mono mt-0.5 flex flex-wrap items-center gap-2">
                               <span className="text-indigo-700 font-semibold">

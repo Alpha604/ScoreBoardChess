@@ -5,6 +5,7 @@ import {
   PlayerProfile,
   Tournament,
 } from '../types/fide';
+import { formatPlayerNameLastFirst } from '../utils/fideValidation';
 
 export const DEFAULT_JSONBIN_BIN_ID = '6ac7d7e6ac6210605a20528d';
 export const DEFAULT_JSONBIN_MASTER_KEY =
@@ -107,19 +108,65 @@ export function createEmptyDatabase(): FideLedgerDatabase {
 }
 
 /**
+ * Fusionne les éventuels doublons de joueurs (même ID, même ID FIDE, même ID FFE ou même "NOM, Prénom")
+ * en conservant les informations les plus récentes (Elos modifiés, notes, club...).
+ */
+export function deduplicateOpponents(opponents: OpponentPlayer[]): OpponentPlayer[] {
+  const result: OpponentPlayer[] = [];
+
+  for (const opp of opponents) {
+    const formattedName = formatPlayerNameLastFirst(opp.name);
+    const cleanFide = (opp.fideId || '').trim();
+    const cleanFfe = (opp.ffeId || '').trim().toUpperCase();
+
+    const existingIdx = result.findIndex(
+      (item) =>
+        item.id === opp.id ||
+        (cleanFide && item.fideId === cleanFide) ||
+        (cleanFfe && item.ffeId.toUpperCase() === cleanFfe) ||
+        formatPlayerNameLastFirst(item.name).toLowerCase() ===
+          formattedName.toLowerCase()
+    );
+
+    if (existingIdx === -1) {
+      result.push({
+        ...opp,
+        name: formattedName,
+      });
+    } else {
+      const prev = result[existingIdx];
+      result[existingIdx] = {
+        ...prev,
+        ...opp,
+        id: prev.id,
+        name: formattedName,
+        fideId: cleanFide || prev.fideId,
+        ffeId: cleanFfe || prev.ffeId,
+        club: opp.club || prev.club,
+        notes: opp.notes || prev.notes,
+      };
+    }
+  }
+
+  return result;
+}
+
+/**
  * Reconstruit ou synchronise automatiquement la liste des joueurs affrontés
- * à partir des parties existantes si un joueur n'est pas encore dans `opponents`.
+ * à partir des parties existantes UNIQUEMENT si un joueur n'est pas encore dans `opponents`.
+ * Ne remplace jamais les Elos ou le nom d'un joueur déjà existant !
  */
 export function syncOpponentsWithGames(
   opponents: OpponentPlayer[],
   games: FideGame[]
 ): OpponentPlayer[] {
-  const list = [...opponents];
+  const list = deduplicateOpponents(opponents);
 
   for (const g of games) {
-    const cleanName = (g.opponentName || '').trim();
-    if (!cleanName) continue;
+    const rawName = (g.opponentName || '').trim();
+    if (!rawName) continue;
 
+    const formattedGameOppName = formatPlayerNameLastFirst(rawName);
     const cleanFide = (g.opponentFideId || '').trim();
     const cleanFfe = (g.opponentFfeId || '').trim().toUpperCase();
 
@@ -128,14 +175,18 @@ export function syncOpponentsWithGames(
         (g.opponentId && o.id === g.opponentId) ||
         (cleanFide && o.fideId === cleanFide) ||
         (cleanFfe && o.ffeId.toUpperCase() === cleanFfe) ||
-        o.name.toLowerCase() === cleanName.toLowerCase()
+        o.name.toLowerCase() === rawName.toLowerCase() ||
+        formatPlayerNameLastFirst(o.name).toLowerCase() ===
+          formattedGameOppName.toLowerCase()
     );
 
     if (foundIdx === -1) {
       const gameElo = Number(g.opponentElo) || 1500;
       list.push({
-        id: g.opponentId || `opp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-        name: cleanName,
+        id:
+          g.opponentId ||
+          `opp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: formattedGameOppName,
         fideId: cleanFide,
         ffeId: cleanFfe,
         elo: gameElo,
@@ -148,36 +199,18 @@ export function syncOpponentsWithGames(
         notes: '',
       });
     } else {
-      // Met à jour les IDs manquants et l'Elo de la cadence correspondante
+      // Ne complète que les identifiants vides sans jamais écraser le nom ou les Elos modifiés par l'utilisateur
       const existing = list[foundIdx];
-      const gameElo = Number(g.opponentElo) || existing.standardElo || existing.elo || 1500;
-      const nextStd =
-        g.timeControl === 'Standard'
-          ? gameElo
-          : existing.standardElo || existing.elo || 1500;
-      const nextRapid =
-        g.timeControl === 'Rapid'
-          ? gameElo
-          : existing.rapidElo || existing.standardElo || existing.elo || 1500;
-      const nextBlitz =
-        g.timeControl === 'Blitz'
-          ? gameElo
-          : existing.blitzElo || existing.standardElo || existing.elo || 1500;
-
       list[foundIdx] = {
         ...existing,
         fideId: existing.fideId || cleanFide,
         ffeId: existing.ffeId || cleanFfe,
-        elo: nextStd,
-        standardElo: nextStd,
-        rapidElo: nextRapid,
-        blitzElo: nextBlitz,
-        title: g.opponentTitle !== 'None' ? g.opponentTitle : existing.title,
+        title: existing.title !== 'None' ? existing.title : g.opponentTitle || 'None',
       };
     }
   }
 
-  return list;
+  return deduplicateOpponents(list);
 }
 
 function normalizeDatabasePayload(raw: unknown): FideLedgerDatabase {
