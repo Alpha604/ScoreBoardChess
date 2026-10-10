@@ -2,25 +2,155 @@
 
 @layer base {
   :root {
-    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+    --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+  }
+
+  html {
+    font-size: 16.5px;
+    line-height: 1.6;
+    letter-spacing: 0.01em;
   }
 
   body {
     font-family: var(--font-sans);
-    background-color: #f8fafc;
-    color: #0f172a;
+    /* Fond chaud sablé/parchemin doux anti-éblouissement */
+    background-color: #efece6;
+    color: #1c222b;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Adoucissement global des surfaces blanches pour ne plus faire mal aux yeux */
+  .bg-white {
+    background-color: #faf8f4 !important;
+  }
+
+  .bg-slate-50 {
+    background-color: #f3f0ea !important;
+  }
+
+  .bg-slate-100 {
+    background-color: #ebe7df !important;
+  }
+
+  /* Bordures douces et chaudes */
+  .border-slate-100 {
+    border-color: #e9e4db !important;
+  }
+
+  .border-slate-200 {
+    border-color: #ded8cc !important;
+  }
+
+  .border-slate-300 {
+    border-color: #cbc4b5 !important;
+  }
+
+  /* Adoucissement des fonds colorés pour un confort visuel maximal */
+  .bg-indigo-50,
+  .bg-indigo-50\/60,
+  .bg-indigo-50\/70,
+  .bg-indigo-50\/50,
+  .bg-indigo-50\/40,
+  .bg-indigo-50\/30,
+  .bg-indigo-50\/25 {
+    background-color: #eef0f6 !important;
+  }
+
+  .bg-emerald-50,
+  .bg-emerald-50\/70,
+  .bg-emerald-50\/60,
+  .bg-emerald-50\/30 {
+    background-color: #eaf3ee !important;
+  }
+
+  .bg-amber-50,
+  .bg-amber-50\/70,
+  .bg-amber-50\/60,
+  .bg-amber-50\/50,
+  .bg-amber-50\/40,
+  .bg-amber-50\/30,
+  .bg-amber-50\/25 {
+    background-color: #f6f0e4 !important;
+  }
+
+  .bg-sky-50,
+  .bg-sky-50\/70,
+  .bg-sky-50\/60,
+  .bg-sky-50\/50,
+  .bg-sky-50\/40,
+  .bg-sky-50\/25 {
+    background-color: #eaf1f6 !important;
+  }
+
+  .bg-rose-50,
+  .bg-rose-50\/70,
+  .bg-rose-50\/60 {
+    background-color: #f7ecee !important;
+  }
+
+  .bg-violet-50,
+  .bg-violet-50\/70,
+  .bg-violet-50\/60 {
+    background-color: #f1eef7 !important;
+  }
+
+  /* Contraste de lecture renforcé (plus jamais de texte trop petit ou trop pâle) */
+  .text-slate-500 {
+    color: #4b5563 !important;
+  }
+
+  .text-slate-600 {
+    color: #374151 !important;
+  }
+
+  .text-slate-700 {
+    color: #27303f !important;
+  }
+
+  .text-slate-800,
+  .text-slate-900,
+  .text-indigo-950 {
+    color: #18202c !important;
+  }
+
+  /* Augmentation des petites tailles de police pour une lecture sans effort */
+  .text-xs {
+    font-size: 0.86rem !important;
+    line-height: 1.45 !important;
+  }
+
+  .text-\[11px\] {
+    font-size: 0.8rem !important;
+    line-height: 1.4 !important;
+  }
+
+  .text-sm {
+    font-size: 0.95rem !important;
+    line-height: 1.55 !important;
   }
 
   .font-mono {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+    letter-spacing: -0.01em;
   }
 
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
-}
 
+  /* Confort de lecture dans les tableaux et formulaires */
+  table th,
+  table td {
+    line-height: 1.5;
+  }
+
+  input,
+  select,
+  textarea {
+    font-size: 0.92rem !important;
+  }
+}

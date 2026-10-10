@@ -8,9 +8,12 @@ import {
   AlertCircle,
   ArrowUpRight,
   Database,
+  LayoutDashboard,
   LogOut,
   Plus,
   RefreshCw,
+  Swords,
+  TrendingUp,
   Trophy,
   UserCheck,
   Users,
@@ -432,113 +435,222 @@ export default function App() {
     );
   }
 
-  return (
-    <div className="min-h-screen flex flex-col bg-slate-100 text-slate-900">
-      {/* Top Navigation Bar (Strict 3-zone contract) */}
-      <header className="sticky top-0 z-30 flex items-center justify-between px-6 py-4 bg-white border-b-2 border-indigo-100 shadow-2xs">
-        <a
-          href="#dashboard"
-          onClick={(e) => {
-            e.preventDefault();
-            setActiveTab('dashboard');
-          }}
-          className="text-lg font-extrabold tracking-tight text-indigo-950 whitespace-nowrap"
-        >
-          FIDE Chess Ledger
-        </a>
+  const navItems: {
+    id: ActiveTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string | number;
+  }[] = [
+    { id: 'dashboard', label: 'Tableau de bord', icon: LayoutDashboard },
+    { id: 'tournaments', label: 'Tournois', icon: Trophy, badge: tournaments.length },
+    { id: 'games', label: 'Parties', icon: Swords, badge: games.length },
+    { id: 'players', label: 'Joueurs affrontés', icon: Users, badge: opponents.length },
+    { id: 'statistics', label: 'Statistiques & Elo', icon: TrendingUp },
+  ];
 
-        <nav className="hidden md:flex items-center gap-7 text-sm font-semibold">
-          {[
-            { id: 'dashboard', label: 'Dashboard' },
-            { id: 'tournaments', label: 'Tournois' },
-            { id: 'games', label: 'Parties' },
-            { id: 'players', label: 'Joueurs' },
-            { id: 'statistics', label: 'Statistiques' },
-          ].map((item) => {
-            const isActive = activeTab === item.id;
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#efece6] text-[#1c222b]">
+      {/* BARRE DE NAVIGATION LATÉRALE GAUCHE (Desktop) */}
+      <aside className="hidden md:flex md:w-68 xl:w-72 shrink-0 bg-[#1e2430] text-[#ebe8e0] flex-col justify-between sticky top-0 h-screen border-r border-[#2c3444] select-none">
+        <div className="p-5 space-y-6 overflow-y-auto">
+          {/* Marque / Titre */}
+          <div className="flex items-center gap-3 px-2 pt-1">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center shrink-0">
+              <Trophy className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-base font-bold tracking-tight text-[#f7f5f0] leading-tight">
+                FIDE Chess Ledger
+              </div>
+              <div className="text-xs text-[#9ca6b8]">
+                Carnet d’échecs officiel
+              </div>
+            </div>
+          </div>
+
+          {/* Carte résumé du joueur dans la barre latérale */}
+          <button
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            className="w-full text-left p-3.5 rounded-2xl bg-[#272f3d] hover:bg-[#2e3747] border border-[#364052] transition-colors cursor-pointer space-y-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-bold text-[#f7f5f0] truncate">
+                {profile?.displayName || 'Mon Profil'}
+              </span>
+              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-400/25">
+                K={profile?.kFactor || 20}
+              </span>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1.5 text-center font-mono">
+              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
+                <div className="text-[10px] text-[#9ca6b8] font-sans">Class.</div>
+                <div className="text-xs font-bold text-indigo-300">
+                  {dashboardStats.currentStd}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
+                <div className="text-[10px] text-[#9ca6b8] font-sans">Rapide</div>
+                <div className="text-xs font-bold text-amber-300">
+                  {dashboardStats.currentRapid}
+                </div>
+              </div>
+              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
+                <div className="text-[10px] text-[#9ca6b8] font-sans">Blitz</div>
+                <div className="text-xs font-bold text-sky-300">
+                  {dashboardStats.currentBlitz}
+                </div>
+              </div>
+            </div>
+          </button>
+
+          {/* Menu de Navigation Principal sur la gauche */}
+          <nav className="space-y-1.5">
+            <div className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#8c96a8]">
+              Navigation
+            </div>
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id;
+              return (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => {
+                    if (item.id === 'players') setSelectedOpponentId(null);
+                    setActiveTab(item.id);
+                  }}
+                  className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                    isActive
+                      ? 'bg-indigo-600 text-white shadow-sm'
+                      : 'text-[#c9c6be] hover:bg-[#28303f] hover:text-white'
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <Icon
+                      className={`w-5 h-5 ${
+                        isActive ? 'text-white' : 'text-[#9ca6b8]'
+                      }`}
+                    />
+                    <span>{item.label}</span>
+                  </span>
+                  {item.badge !== undefined && (
+                    <span
+                      className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                        isActive
+                          ? 'bg-indigo-800/80 text-indigo-100'
+                          : 'bg-[#28303f] text-[#aeb6c4]'
+                      }`}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* Bas de la barre latérale : Synchronisation JSONBin, Profil & Déconnexion */}
+        <div className="p-4 border-t border-[#2c3444] bg-[#191e28] space-y-2.5">
+          <div className="flex items-center justify-between px-1 text-xs text-[#9ca6b8]">
+            <span>Cloud JSONBin</span>
+            <span className="font-mono text-[11px] text-emerald-400">
+              ● Connecté
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => loadFromJsonBin()}
+              disabled={isLoading || isSyncing}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#e5e2da] bg-[#272f3d] hover:bg-[#323c4e] border border-[#364052] rounded-xl transition-colors cursor-pointer"
+              title="Actualiser depuis JSONBin"
+            >
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${
+                  isLoading || isSyncing ? 'animate-spin text-indigo-300' : ''
+                }`}
+              />
+              {isSyncing ? 'Sync...' : 'Actualiser'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#e5e2da] bg-[#272f3d] hover:bg-[#323c4e] border border-[#364052] rounded-xl transition-colors cursor-pointer"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-indigo-300" />
+              Mon Profil
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-900/40 rounded-xl transition-colors cursor-pointer"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            Changer de compte / Déconnexion
+          </button>
+        </div>
+      </aside>
+
+      {/* Navigation Mobile (Bandeau supérieur uniquement sur petit écran) */}
+      <div className="md:hidden bg-[#1e2430] text-[#f7f5f0] p-4 space-y-3 border-b border-[#2c3444]">
+        <div className="flex items-center justify-between">
+          <div className="font-bold text-base flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-indigo-400" />
+            FIDE Chess Ledger
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsProfileModalOpen(true)}
+              className="px-3 py-1.5 text-xs font-semibold bg-[#272f3d] rounded-lg"
+            >
+              {profile?.displayName || 'Profil'}
+            </button>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="p-1.5 text-rose-300 bg-[#272f3d] rounded-lg"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id;
             return (
               <button
                 key={item.id}
                 type="button"
                 onClick={() => {
                   if (item.id === 'players') setSelectedOpponentId(null);
-                  setActiveTab(item.id as ActiveTab);
+                  setActiveTab(item.id);
                 }}
-                className={`py-1.5 border-b-2 transition-colors whitespace-nowrap cursor-pointer ${
-                  isActive
-                    ? 'border-indigo-600 text-indigo-700 font-bold'
-                    : 'border-transparent text-slate-600 hover:text-indigo-900'
+                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap ${
+                  active
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-[#272f3d] text-[#c9c6be]'
                 }`}
               >
+                <Icon className="w-3.5 h-3.5" />
                 {item.label}
               </button>
             );
           })}
-        </nav>
-
-        <div className="flex items-center gap-2.5">
-          <button
-            type="button"
-            onClick={() => loadFromJsonBin()}
-            disabled={isLoading || isSyncing}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors whitespace-nowrap"
-            title="Actualiser depuis JSONBin"
-          >
-            <RefreshCw
-              className={`w-3.5 h-3.5 ${isLoading || isSyncing ? 'animate-spin' : ''}`}
-            />
-            {isSyncing ? 'Sauvegarde...' : 'Sync'}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsProfileModalOpen(true)}
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors whitespace-nowrap shadow-2xs"
-          >
-            <UserCheck className="w-3.5 h-3.5" />
-            {profile?.displayName || 'Mon Profil'}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="p-2 text-slate-500 hover:text-rose-700 bg-slate-100 hover:bg-rose-50 rounded-xl transition-colors"
-            title="Se déconnecter"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
         </div>
-      </header>
-
-      {/* Navigation Mobile */}
-      <div className="flex md:hidden items-center gap-2 overflow-x-auto px-4 py-2.5 bg-white border-b border-slate-200 text-xs">
-        {[
-          { id: 'dashboard', label: 'Dashboard' },
-          { id: 'tournaments', label: 'Tournois' },
-          { id: 'games', label: 'Parties' },
-          { id: 'players', label: 'Joueurs' },
-          { id: 'statistics', label: 'Statistiques' },
-        ].map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onClick={() => {
-              if (item.id === 'players') setSelectedOpponentId(null);
-              setActiveTab(item.id as ActiveTab);
-            }}
-            className={`px-3.5 py-1.5 rounded-xl font-bold whitespace-nowrap ${
-              activeTab === item.id
-                ? 'bg-indigo-600 text-white'
-                : 'text-slate-600 hover:bg-indigo-50'
-            }`}
-          >
-            {item.label}
-          </button>
-        ))}
       </div>
 
-      {/* Contenu Principal */}
-      <main className="flex-1 max-w-[1340px] w-full mx-auto px-4 sm:px-6 py-7 space-y-7">
+      {/* Zone Principale de Contenu à Droite */}
+      <div className="flex-1 min-w-0 flex flex-col justify-between">
+        <main className="max-w-[1260px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-8 space-y-7">
         {errorBanner && (
           <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-xs text-rose-900">
             <div className="flex items-start gap-2">
@@ -1068,20 +1180,21 @@ export default function App() {
             onOpenProfileModal={() => setIsProfileModalOpen(true)}
           />
         )}
-      </main>
+        </main>
 
-      {/* Footer discret */}
-      <footer className="mt-12 border-t border-slate-200 bg-white px-6 py-4 text-xs text-slate-500 flex flex-wrap items-center justify-between gap-4">
-        <div>
-          FIDE Chess Ledger — Sauvegarde automatique dans JSONBin ({session.binId})
-        </div>
-        <div className="font-mono">
-          Dernière synchronisation :{' '}
-          {dbState.updatedAt
-            ? new Date(dbState.updatedAt).toLocaleString('fr-FR')
-            : '—'}
-        </div>
-      </footer>
+        {/* Footer discret */}
+        <footer className="mt-12 border-t border-slate-200 bg-white px-8 py-4 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-4">
+          <div>
+            FIDE Chess Ledger — Sauvegarde automatique dans JSONBin ({session.binId})
+          </div>
+          <div className="font-mono">
+            Dernière synchronisation :{' '}
+            {dbState.updatedAt
+              ? new Date(dbState.updatedAt).toLocaleString('fr-FR')
+              : '—'}
+          </div>
+        </footer>
+      </div>
 
       {isProfileModalOpen && (
         <ProfileModal
