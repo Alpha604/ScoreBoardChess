@@ -1,4 +1,8 @@
-import { FideLedgerDatabase, syncOpponentsWithGames } from '../services/jsonbinService';
+import {
+  FideLedgerDatabase,
+  FriendlyLedgerDatabase,
+  syncOpponentsWithGames,
+} from '../services/jsonbinService';
 import { OpponentPlayer } from '../types/fide';
 import {
   sanitizeFideGamePayload,
@@ -529,5 +533,141 @@ export function buildSampleFideLedgerDatabase(): FideLedgerDatabase {
     tournaments,
     games,
     ratingHistory,
+  };
+}
+
+export function buildSampleFriendlyLedgerDatabase(): FriendlyLedgerDatabase {
+  const uid = 'default_player';
+
+  const friendlyOpponents: OpponentPlayer[] = [
+    {
+      id: 'f_opp_martin',
+      name: 'MARTIN, Théo',
+      fideId: '',
+      ffeId: '',
+      elo: 1620,
+      standardElo: 1600,
+      rapidElo: 1620,
+      blitzElo: 1680,
+      title: 'None',
+      federation: 'FRA',
+      club: 'Ami du club / Café Échecs',
+      notes: 'Joue très vite en Blitz, adore le Gambit Roi et les sacrifices sur f7.',
+    },
+    {
+      id: 'f_opp_leroy',
+      name: 'LEROY, Clara',
+      fideId: '',
+      ffeId: '',
+      elo: 1750,
+      standardElo: 1750,
+      rapidElo: 1780,
+      blitzElo: 1720,
+      title: 'None',
+      federation: 'FRA',
+      club: 'Entraînement Club',
+      notes: 'Partenaire d’entraînement pour travailler les ouvertures avec 1.d4.',
+    },
+  ];
+
+  const t1Id = 'ft_soiree_club';
+  const tournamentsRaw = [
+    {
+      id: t1Id,
+      name: 'Soirées Blitz & Parties Amicales au Club',
+      location: 'Club / Café',
+      startDate: '2026-10-01',
+      endDate: '2026-10-31',
+      timeControl: 'Blitz' as const,
+      timeControlDetails: '5 min + 3 sec/coup (Non homologué)',
+      format: 'Round Robin' as const,
+      totalRounds: 10,
+      totalPlayers: 6,
+      finalRank: 1,
+      startingElo: 1850,
+      status: 'ongoing' as const,
+      normTarget: 'Entraînement & plaisir',
+      notes: 'Session de parties amicales et d’entraînement hors classement officiel.',
+    },
+  ];
+
+  const tournaments = tournamentsRaw.map((t) => ({
+    id: t.id,
+    ...sanitizeTournamentPayload(uid, t),
+  }));
+
+  const gamesRaw = [
+    {
+      id: 'fg_1',
+      tournamentId: t1Id,
+      tournamentName: 'Soirées Blitz & Parties Amicales au Club',
+      round: 1,
+      datePlayed: '2026-10-05',
+      timeControl: 'Blitz' as const,
+      playerColor: 'White' as const,
+      playerElo: 1850,
+      opponentId: 'f_opp_martin',
+      opponentName: 'MARTIN, Théo',
+      opponentFideId: '',
+      opponentFfeId: '',
+      opponentTitle: 'None' as const,
+      opponentElo: 1680,
+      opponentFederation: 'FRA',
+      result: '1-0' as const,
+      playerScore: 1 as const,
+      eloChange: 0,
+      kFactorUsed: 20 as const,
+      ecoCode: 'C30',
+      openingName: 'Gambit du Roi',
+      movesCount: 28,
+      termination: 'Checkmate' as const,
+      pgn: '1. e4 e5 2. f4 exf4 3. Nf3 g5 4. h4 g4 5. Ne5 Nf6 6. Bc4 d5 7. exd5 Bd6 8. d4',
+      chessComUrl: '',
+      keyMomentNote: 'Belle miniature tactique en blitz amical.',
+    },
+    {
+      id: 'fg_2',
+      tournamentId: t1Id,
+      tournamentName: 'Soirées Blitz & Parties Amicales au Club',
+      round: 2,
+      datePlayed: '2026-10-06',
+      timeControl: 'Rapid' as const,
+      playerColor: 'Black' as const,
+      playerElo: 1850,
+      opponentId: 'f_opp_leroy',
+      opponentName: 'LEROY, Clara',
+      opponentFideId: '',
+      opponentFfeId: '',
+      opponentTitle: 'None' as const,
+      opponentElo: 1780,
+      opponentFederation: 'FRA',
+      result: '1/2-1/2' as const,
+      playerScore: 0.5 as const,
+      eloChange: 0,
+      kFactorUsed: 20 as const,
+      ecoCode: 'D02',
+      openingName: 'Système de Londres',
+      movesCount: 42,
+      termination: 'Agreement' as const,
+      pgn: '1. d4 d5 2. Bf4 Nf6 3. e3 c5 4. c3 Nc6 5. Nd2 Bf5',
+      chessComUrl: '',
+      keyMomentNote: 'Partie d’entraînement thématique sur le Système de Londres.',
+    },
+  ];
+
+  const games = gamesRaw.map((g) => ({
+    id: g.id,
+    ...sanitizeFideGamePayload(uid, g),
+  }));
+
+  const opponents = syncOpponentsWithGames(friendlyOpponents, games);
+
+  return {
+    version: 1,
+    ledgerType: 'friendly_chess_ledger',
+    updatedAt: new Date().toISOString(),
+    opponents,
+    tournaments,
+    games,
   };
 }
