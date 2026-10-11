@@ -5,7 +5,13 @@ import {
   PlayerProfile,
   Tournament,
 } from '../types/fide';
-import { formatPlayerNameLastFirst } from '../utils/fideValidation';
+import {
+  formatPlayerNameLastFirst,
+  FREE_GAME_TOURNAMENT_ID,
+  FREE_GAME_TOURNAMENT_NAME,
+  hasQuestionMarkInName,
+  stripQuestionMarkFromName,
+} from '../utils/fideValidation';
 
 // BIN #1 : Base Officielle des Parties Classées FIDE
 export const DEFAULT_JSONBIN_BIN_ID = '6ac7d7e6ac6210605a20528d';
@@ -187,7 +193,10 @@ export function deduplicateOpponents(opponents: OpponentPlayer[]): OpponentPlaye
   const result: OpponentPlayer[] = [];
 
   for (const opp of opponents) {
-    const formattedName = formatPlayerNameLastFirst(opp.name);
+    const isNameUncertain =
+      Boolean(opp.isNameUncertain) || hasQuestionMarkInName(opp.name);
+    const formattedName = formatPlayerNameLastFirst(opp.name, isNameUncertain);
+    const baseName = stripQuestionMarkFromName(formattedName).toLowerCase();
     const cleanFide = (opp.fideId || '').trim();
     const cleanFfe = (opp.ffeId || '').trim().toUpperCase();
 
@@ -196,14 +205,14 @@ export function deduplicateOpponents(opponents: OpponentPlayer[]): OpponentPlaye
         item.id === opp.id ||
         (cleanFide && item.fideId === cleanFide) ||
         (cleanFfe && item.ffeId.toUpperCase() === cleanFfe) ||
-        formatPlayerNameLastFirst(item.name).toLowerCase() ===
-          formattedName.toLowerCase()
+        stripQuestionMarkFromName(item.name).toLowerCase() === baseName
     );
 
     if (existingIdx === -1) {
       result.push({
         ...opp,
         name: formattedName,
+        isNameUncertain,
       });
     } else {
       const prev = result[existingIdx];
@@ -212,6 +221,7 @@ export function deduplicateOpponents(opponents: OpponentPlayer[]): OpponentPlaye
         ...opp,
         id: prev.id,
         name: formattedName,
+        isNameUncertain,
         fideId: cleanFide || prev.fideId,
         ffeId: cleanFfe || prev.ffeId,
         club: opp.club || prev.club,
@@ -238,7 +248,12 @@ export function syncOpponentsWithGames(
     const rawName = (g.opponentName || '').trim();
     if (!rawName) continue;
 
-    const formattedGameOppName = formatPlayerNameLastFirst(rawName);
+    const isUncertain =
+      Boolean(g.opponentNameUncertain) || hasQuestionMarkInName(rawName);
+    const formattedGameOppName = formatPlayerNameLastFirst(rawName, isUncertain);
+    const baseGameOppName = stripQuestionMarkFromName(
+      formattedGameOppName
+    ).toLowerCase();
     const cleanFide = (g.opponentFideId || '').trim();
     const cleanFfe = (g.opponentFfeId || '').trim().toUpperCase();
 
@@ -247,24 +262,29 @@ export function syncOpponentsWithGames(
         (g.opponentId && o.id === g.opponentId) ||
         (cleanFide && o.fideId === cleanFide) ||
         (cleanFfe && o.ffeId.toUpperCase() === cleanFfe) ||
-        o.name.toLowerCase() === rawName.toLowerCase() ||
-        formatPlayerNameLastFirst(o.name).toLowerCase() ===
-          formattedGameOppName.toLowerCase()
+        stripQuestionMarkFromName(o.name).toLowerCase() === baseGameOppName
     );
 
     if (foundIdx === -1) {
-      const gameElo = Number(g.opponentElo) || 1500;
+      const isUnknownElo =
+        Boolean(g.opponentEloUnknown) || Number(g.opponentElo) <= 0;
+      const gameElo = isUnknownElo ? 0 : Number(g.opponentElo) || 1500;
       list.push({
         id:
           g.opponentId ||
           `opp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
         name: formattedGameOppName,
+        isNameUncertain: isUncertain,
         fideId: cleanFide,
         ffeId: cleanFfe,
         elo: gameElo,
         standardElo: gameElo,
         rapidElo: gameElo,
         blitzElo: gameElo,
+        isEloUnknown: isUnknownElo,
+        isStandardEloUnknown: isUnknownElo,
+        isRapidEloUnknown: isUnknownElo,
+        isBlitzEloUnknown: isUnknownElo,
         title: g.opponentTitle || 'None',
         federation: g.opponentFederation || 'FRA',
         club: '',
@@ -276,7 +296,10 @@ export function syncOpponentsWithGames(
         ...existing,
         fideId: existing.fideId || cleanFide,
         ffeId: existing.ffeId || cleanFfe,
-        title: existing.title !== 'None' ? existing.title : g.opponentTitle || 'None',
+        title:
+          existing.title !== 'None'
+            ? existing.title
+            : g.opponentTitle || 'None',
       };
     }
   }
@@ -309,59 +332,109 @@ function normalizeTournamentsArray(rawTournaments: unknown, defaultElo = 1500): 
 function normalizeGamesArray(
   rawGames: unknown,
   tournaments: Tournament[],
-  defaultElo = 1500
+  defaultElo = 1500,
+  isFriendly = false
 ): FideGame[] {
   if (!Array.isArray(rawGames)) return [];
-  return rawGames.map((g: Partial<FideGame>, idx: number) => ({
-    id: g.id || `game_${idx + 1}`,
-    ownerId: 'default_player',
-    tournamentId: g.tournamentId || (tournaments[0]?.id ?? 'default_tourney'),
-    tournamentName: g.tournamentName || (tournaments[0]?.name ?? 'Tournoi'),
-    round: Number(g.round) || 1,
-    datePlayed: g.datePlayed || new Date().toISOString().slice(0, 10),
-    timeControl: g.timeControl || 'Standard',
-    playerColor: g.playerColor || 'White',
-    playerElo: Number(g.playerElo) || defaultElo,
-    opponentId: g.opponentId || undefined,
-    opponentName: formatPlayerNameLastFirst(g.opponentName || 'Adversaire'),
-    opponentFideId: g.opponentFideId || '',
-    opponentFfeId: g.opponentFfeId || '',
-    opponentTitle: g.opponentTitle || 'None',
-    opponentElo: Number(g.opponentElo) || 1500,
-    opponentFederation: g.opponentFederation || 'FRA',
-    result: g.result || '1/2-1/2',
-    playerScore:
-      g.playerScore === 1 || g.playerScore === 0 || g.playerScore === 0.5
-        ? g.playerScore
-        : 0.5,
-    eloChange: Number(g.eloChange) || 0,
-    kFactorUsed:
-      g.kFactorUsed === 10 || g.kFactorUsed === 40 ? g.kFactorUsed : 20,
-    ecoCode: g.ecoCode || '',
-    openingName: g.openingName || '',
-    movesCount: Number(g.movesCount) || 0,
-    termination: g.termination || 'Resignation',
-    pgn: g.pgn || '',
-    chessComUrl: g.chessComUrl || '',
-    keyMomentNote: g.keyMomentNote || '',
-  }));
+  return rawGames.map((g: Partial<FideGame>, idx: number) => {
+    const isNameUncertain =
+      Boolean(g.opponentNameUncertain) ||
+      hasQuestionMarkInName(g.opponentName);
+    const isEloUnknown =
+      Boolean(g.opponentEloUnknown) ||
+      (g.opponentElo !== undefined && Number(g.opponentElo) <= 0);
+    const isFree =
+      !g.tournamentId || g.tournamentId === FREE_GAME_TOURNAMENT_ID;
+
+    return {
+      id: g.id || `game_${idx + 1}`,
+      ownerId: 'default_player',
+      tournamentId: isFree
+        ? FREE_GAME_TOURNAMENT_ID
+        : g.tournamentId || (tournaments[0]?.id ?? FREE_GAME_TOURNAMENT_ID),
+      tournamentName: isFree
+        ? g.tournamentName || FREE_GAME_TOURNAMENT_NAME
+        : g.tournamentName || (tournaments[0]?.name ?? FREE_GAME_TOURNAMENT_NAME),
+      round: Number(g.round) || 1,
+      datePlayed: g.datePlayed || new Date().toISOString().slice(0, 10),
+      timeControl: g.timeControl || 'Standard',
+      playerColor: g.playerColor || 'White',
+      playerElo: Number(g.playerElo) || defaultElo,
+      opponentId: g.opponentId || undefined,
+      opponentName: formatPlayerNameLastFirst(
+        g.opponentName || 'Adversaire',
+        isNameUncertain
+      ),
+      opponentNameUncertain: isNameUncertain,
+      opponentFideId: g.opponentFideId || '',
+      opponentFfeId: g.opponentFfeId || '',
+      opponentTitle: g.opponentTitle || 'None',
+      opponentElo: isEloUnknown ? 0 : Number(g.opponentElo) || 1500,
+      opponentEloUnknown: isEloUnknown,
+      opponentFederation: g.opponentFederation || 'FRA',
+      result: g.result || '1/2-1/2',
+      playerScore:
+        g.playerScore === 1 || g.playerScore === 0 || g.playerScore === 0.5
+          ? g.playerScore
+          : 0.5,
+      eloChange: isFriendly || isEloUnknown ? 0 : Number(g.eloChange) || 0,
+      kFactorUsed:
+        g.kFactorUsed === 10 || g.kFactorUsed === 40 ? g.kFactorUsed : 20,
+      ecoCode: g.ecoCode || '',
+      openingName: g.openingName || '',
+      movesCount: Number(g.movesCount) || 0,
+      termination: g.termination || 'Resignation',
+      pgn: g.pgn || '',
+      chessComUrl: g.chessComUrl || '',
+      keyMomentNote: g.keyMomentNote || '',
+    };
+  });
 }
 
 function normalizeOpponentsArray(rawOpps: unknown): OpponentPlayer[] {
   if (!Array.isArray(rawOpps)) return [];
   return rawOpps.map((o: Partial<OpponentPlayer>, idx: number) => {
-    const stdElo = Number(o.standardElo) || Number(o.elo) || 1500;
-    const rapidElo = Number(o.rapidElo) || stdElo;
-    const blitzElo = Number(o.blitzElo) || stdElo;
+    const isNameUncertain =
+      Boolean(o.isNameUncertain) || hasQuestionMarkInName(o.name);
+    const isEloUnknown = Boolean(o.isEloUnknown);
+    const isStandardEloUnknown =
+      isEloUnknown ||
+      Boolean(o.isStandardEloUnknown) ||
+      (o.standardElo !== undefined && Number(o.standardElo) <= 0);
+    const isRapidEloUnknown =
+      isEloUnknown ||
+      Boolean(o.isRapidEloUnknown) ||
+      (o.rapidElo !== undefined && Number(o.rapidElo) <= 0);
+    const isBlitzEloUnknown =
+      isEloUnknown ||
+      Boolean(o.isBlitzEloUnknown) ||
+      (o.blitzElo !== undefined && Number(o.blitzElo) <= 0);
+
+    const stdElo = isStandardEloUnknown
+      ? 0
+      : Number(o.standardElo) || Number(o.elo) || 1500;
+    const rapidElo = isRapidEloUnknown
+      ? 0
+      : Number(o.rapidElo) || stdElo || 1500;
+    const blitzElo = isBlitzEloUnknown
+      ? 0
+      : Number(o.blitzElo) || stdElo || 1500;
+
     return {
       id: o.id || `opp_${idx + 1}`,
-      name: formatPlayerNameLastFirst(o.name || 'Joueur'),
+      name: formatPlayerNameLastFirst(o.name || 'Joueur', isNameUncertain),
+      isNameUncertain,
       fideId: o.fideId || '',
       ffeId: o.ffeId || '',
       elo: stdElo,
       standardElo: stdElo,
       rapidElo,
       blitzElo,
+      isEloUnknown:
+        isStandardEloUnknown && isRapidEloUnknown && isBlitzEloUnknown,
+      isStandardEloUnknown,
+      isRapidEloUnknown,
+      isBlitzEloUnknown,
       title: o.title || 'None',
       federation: o.federation || 'FRA',
       club: o.club || '',
@@ -458,7 +531,7 @@ export function normalizeFriendlyDatabasePayload(raw: unknown): FriendlyLedgerDa
       : obj;
 
   const tournaments = normalizeTournamentsArray(payload.tournaments, 1500);
-  const games = normalizeGamesArray(payload.games, tournaments, 1500);
+  const games = normalizeGamesArray(payload.games, tournaments, 1500, true);
   const rawOpponents = normalizeOpponentsArray(payload.opponents);
   const opponents = syncOpponentsWithGames(rawOpponents, games);
 

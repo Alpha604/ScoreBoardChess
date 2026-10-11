@@ -33,16 +33,22 @@ export interface PlayerProfile {
 /**
  * Joueur affronté (relié par Nom, ID FIDE et/ou ID FFE)
  * Possède un classement Elo distinct dans chaque cadence (Classique, Rapide, Blitz)
+ * Peut avoir un nom incertain (?) et/ou des Elos inconnus (?)
  */
 export interface OpponentPlayer {
   id: string;
   name: string;
+  isNameUncertain?: boolean;
   fideId: string; // ex: 65104823
   ffeId: string; // ex: K59102
-  elo: number; // Elo principal (synchronisé avec standardElo)
-  standardElo: number; // Elo Classique / Standard
-  rapidElo: number; // Elo Rapide
-  blitzElo: number; // Elo Blitz
+  elo: number; // Elo principal (synchronisé avec standardElo, 0 si inconnu)
+  standardElo: number; // Elo Classique / Standard (0 si inconnu)
+  rapidElo: number; // Elo Rapide (0 si inconnu)
+  blitzElo: number; // Elo Blitz (0 si inconnu)
+  isEloUnknown?: boolean;
+  isStandardEloUnknown?: boolean;
+  isRapidEloUnknown?: boolean;
+  isBlitzEloUnknown?: boolean;
   title: FideTitle;
   federation: string;
   club: string;
@@ -71,8 +77,8 @@ export interface Tournament {
 export interface FideGame {
   id: string;
   ownerId: string;
-  tournamentId: string;
-  tournamentName: string;
+  tournamentId: string; // Peut être 'free_game' pour une partie hors tournoi
+  tournamentName: string; // 'Partie libre (Hors tournoi)' ou nom du tournoi
   round: number;
   datePlayed: string; // YYYY-MM-DD
   timeControl: TimeControlCategory;
@@ -80,10 +86,12 @@ export interface FideGame {
   playerElo: number;
   opponentId?: string; // Référence vers OpponentPlayer.id
   opponentName: string;
+  opponentNameUncertain?: boolean;
   opponentFideId: string;
   opponentFfeId?: string;
   opponentTitle: FideTitle;
-  opponentElo: number;
+  opponentElo: number; // 0 si inconnu
+  opponentEloUnknown?: boolean;
   opponentFederation: string;
   result: GameResult;
   playerScore: 0 | 0.5 | 1;
@@ -93,7 +101,7 @@ export interface FideGame {
   openingName: string;
   movesCount: number;
   termination: GameTermination;
-  pgn: string; // Optionnel (surtout pour les parties classiques)
+  pgn: string; // Texte PGN copiable
   chessComUrl?: string; // Lien facultatif pour analyser sur Chess.com
   keyMomentNote: string;
 }

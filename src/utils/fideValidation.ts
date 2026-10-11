@@ -14,6 +14,9 @@ import {
 } from '../types/fide';
 import { getPlayerScoreFromResult } from './fideMath';
 
+export const FREE_GAME_TOURNAMENT_ID = 'free_game';
+export const FREE_GAME_TOURNAMENT_NAME = 'Partie libre (Hors tournoi)';
+
 const VALID_TITLES: FideTitle[] = [
   'None',
   'CM',
@@ -56,7 +59,11 @@ function clampNumber(
   return Math.max(min, Math.min(max, val));
 }
 
-function sanitizeString(val: string | undefined, maxLen: number, fallback = ''): string {
+function sanitizeString(
+  val: string | undefined,
+  maxLen: number,
+  fallback = ''
+): string {
   const trimmed = (val ?? '').trim();
   if (!trimmed && fallback) return fallback;
   return trimmed.slice(0, maxLen);
@@ -88,7 +95,9 @@ export function sanitizePlayerProfilePayload(
     federation: fed || 'FRA',
     club: sanitizeString(input.club, 100, ''),
     fideTitle: validTitle,
-    birthYear: Math.round(clampNumber(Number(input.birthYear), 1900, 2026, 2000)),
+    birthYear: Math.round(
+      clampNumber(Number(input.birthYear), 1900, 2026, 2000)
+    ),
     kFactor: validK,
     standardElo: Math.round(
       clampNumber(Number(input.standardElo), 800, 3500, 1500)
@@ -101,10 +110,47 @@ export function sanitizePlayerProfilePayload(
   };
 }
 
+export function isOpponentEloUnknownForCadence(
+  opp: Pick<
+    OpponentPlayer,
+    | 'elo'
+    | 'standardElo'
+    | 'rapidElo'
+    | 'blitzElo'
+    | 'isEloUnknown'
+    | 'isStandardEloUnknown'
+    | 'isRapidEloUnknown'
+    | 'isBlitzEloUnknown'
+  >,
+  cadence: TimeControlCategory
+): boolean {
+  if (opp.isEloUnknown) return true;
+  if (cadence === 'Rapid') {
+    return Boolean(opp.isRapidEloUnknown) || Number(opp.rapidElo) <= 0;
+  }
+  if (cadence === 'Blitz') {
+    return Boolean(opp.isBlitzEloUnknown) || Number(opp.blitzElo) <= 0;
+  }
+  return Boolean(opp.isStandardEloUnknown) || Number(opp.standardElo || opp.elo) <= 0;
+}
+
 export function getOpponentEloForCadence(
-  opp: Pick<OpponentPlayer, 'elo' | 'standardElo' | 'rapidElo' | 'blitzElo'>,
+  opp: Pick<
+    OpponentPlayer,
+    | 'elo'
+    | 'standardElo'
+    | 'rapidElo'
+    | 'blitzElo'
+    | 'isEloUnknown'
+    | 'isStandardEloUnknown'
+    | 'isRapidEloUnknown'
+    | 'isBlitzEloUnknown'
+  >,
   cadence: TimeControlCategory
 ): number {
+  if (isOpponentEloUnknownForCadence(opp, cadence)) {
+    return 0;
+  }
   if (cadence === 'Rapid') {
     return Number(opp.rapidElo) || Number(opp.standardElo) || Number(opp.elo) || 1500;
   }
@@ -112,6 +158,16 @@ export function getOpponentEloForCadence(
     return Number(opp.blitzElo) || Number(opp.standardElo) || Number(opp.elo) || 1500;
   }
   return Number(opp.standardElo) || Number(opp.elo) || 1500;
+}
+
+export function formatEloDisplay(
+  elo: number | undefined,
+  isUnknown?: boolean
+): string {
+  if (isUnknown || elo === undefined || elo === null || Number(elo) <= 0) {
+    return '?';
+  }
+  return String(Math.round(Number(elo)));
 }
 
 function capitalizeFirstName(raw: string): string {
@@ -125,45 +181,80 @@ function capitalizeFirstName(raw: string): string {
     .join('');
 }
 
+export function hasQuestionMarkInName(rawName: string | undefined): boolean {
+  return Boolean(rawName && rawName.includes('?'));
+}
+
+export function hasQuestionMarkName(rawName: string | undefined): boolean {
+  return hasQuestionMarkInName(rawName);
+}
+
 /**
- * Formate un nom de joueur sous la forme stricte : "NOM, Prénom" (sans ID FIDE ni FFE)
+ * Formate un nom de joueur sous la forme stricte : "NOM, Prénom" (sans ID FIDE ni FFE).
+ * Si isUncertain === true, ajoute " ?" à la fin.
  */
-export function formatPlayerNameLastFirst(rawName: string): string {
+export function formatPlayerNameLastFirst(
+  rawName: string,
+  isUncertain?: boolean
+): string {
   const cleaned = (rawName || '')
     .replace(/\(.*?\)/g, '')
     .replace(/·.*$/g, '')
+    .replace(/\?/g, '')
     .trim();
-  if (!cleaned) return 'ADVERSAIRE';
+
+  const uncertainSuffix = isUncertain ? ' ?' : '';
+
+  if (!cleaned) {
+    return uncertainSuffix ? 'INCONNU ?' : 'ADVERSAIRE';
+  }
+
+  let baseFormatted = '';
 
   if (cleaned.includes(',')) {
     const [lastPart, ...firstParts] = cleaned.split(',');
     const lastName = lastPart.trim().toUpperCase();
     const firstName = capitalizeFirstName(firstParts.join(' '));
-    return firstName ? `${lastName}, ${firstName}` : lastName;
+    baseFormatted = firstName ? `${lastName}, ${firstName}` : lastName;
+  } else {
+    const words = cleaned.split(/\s+/).filter(Boolean);
+    if (words.length === 1) {
+      baseFormatted = words[0].toUpperCase();
+    } else {
+      const firstWord = words[0];
+      const secondWord = words[1];
+      if (
+        firstWord.length > 1 &&
+        firstWord === firstWord.toUpperCase() &&
+        secondWord !== secondWord.toUpperCase()
+      ) {
+        const lastName = firstWord.toUpperCase();
+        const firstName = capitalizeFirstName(words.slice(1).join(' '));
+        baseFormatted = `${lastName}, ${firstName}`;
+      } else {
+        const lastName = words[words.length - 1].toUpperCase();
+        const firstName = capitalizeFirstName(words.slice(0, -1).join(' '));
+        baseFormatted = `${lastName}, ${firstName}`;
+      }
+    }
   }
 
-  const words = cleaned.split(/\s+/).filter(Boolean);
-  if (words.length === 1) {
-    return words[0].toUpperCase();
-  }
+  return `${baseFormatted}${uncertainSuffix}`;
+}
 
-  // Si le premier mot est déjà tout en majuscules (ex: "DUBOIS Quentin")
-  const firstWord = words[0];
-  const secondWord = words[1];
-  if (
-    firstWord.length > 1 &&
-    firstWord === firstWord.toUpperCase() &&
-    secondWord !== secondWord.toUpperCase()
-  ) {
-    const lastName = firstWord.toUpperCase();
-    const firstName = capitalizeFirstName(words.slice(1).join(' '));
-    return `${lastName}, ${firstName}`;
-  }
+export function formatPlayerNameDisplay(
+  rawName: string,
+  isUncertain?: boolean
+): string {
+  const uncertain = Boolean(isUncertain || hasQuestionMarkInName(rawName));
+  return formatPlayerNameLastFirst(rawName, uncertain);
+}
 
-  // Sinon par défaut le dernier mot est le nom de famille (ex: "Lucas Vandenberghe")
-  const lastName = words[words.length - 1].toUpperCase();
-  const firstName = capitalizeFirstName(words.slice(0, -1).join(' '));
-  return `${lastName}, ${firstName}`;
+/**
+ * Nettoie un nom sans le point d'interrogation pour l'édition dans un champ texte
+ */
+export function stripQuestionMarkFromName(rawName: string): string {
+  return formatPlayerNameLastFirst(rawName, false).replace(/\s*\?$/, '').trim();
 }
 
 /**
@@ -173,8 +264,8 @@ export function sortOpponentsAlphabetically(
   opponents: OpponentPlayer[]
 ): OpponentPlayer[] {
   return [...opponents].sort((a, b) =>
-    formatPlayerNameLastFirst(a.name).localeCompare(
-      formatPlayerNameLastFirst(b.name),
+    stripQuestionMarkFromName(a.name).localeCompare(
+      stripQuestionMarkFromName(b.name),
       'fr',
       { sensitivity: 'base' }
     )
@@ -184,21 +275,55 @@ export function sortOpponentsAlphabetically(
 export function sanitizeOpponentPayload(
   input: Omit<OpponentPlayer, 'id'>
 ): Omit<OpponentPlayer, 'id'> {
-  const fallbackElo = Math.round(
-    clampNumber(Number(input.standardElo || input.elo), 800, 3500, 1500)
-  );
-  const standardElo = Math.round(
-    clampNumber(Number(input.standardElo ?? input.elo), 800, 3500, fallbackElo)
-  );
-  const rapidElo = Math.round(
-    clampNumber(Number(input.rapidElo ?? standardElo), 800, 3500, standardElo)
-  );
-  const blitzElo = Math.round(
-    clampNumber(Number(input.blitzElo ?? standardElo), 800, 3500, standardElo)
-  );
+  const isNameUncertain =
+    Boolean(input.isNameUncertain) || hasQuestionMarkInName(input.name);
+
+  const isEloUnknown = Boolean(input.isEloUnknown);
+  const isStandardEloUnknown =
+    isEloUnknown ||
+    Boolean(input.isStandardEloUnknown) ||
+    Number(input.standardElo ?? input.elo) <= 0;
+  const isRapidEloUnknown =
+    isEloUnknown ||
+    Boolean(input.isRapidEloUnknown) ||
+    Number(input.rapidElo ?? input.standardElo ?? input.elo) <= 0;
+  const isBlitzEloUnknown =
+    isEloUnknown ||
+    Boolean(input.isBlitzEloUnknown) ||
+    Number(input.blitzElo ?? input.standardElo ?? input.elo) <= 0;
+
+  const standardElo = isStandardEloUnknown
+    ? 0
+    : Math.round(
+        clampNumber(Number(input.standardElo ?? input.elo), 600, 3500, 1500)
+      );
+  const rapidElo = isRapidEloUnknown
+    ? 0
+    : Math.round(
+        clampNumber(
+          Number(input.rapidElo ?? (standardElo || 1500)),
+          600,
+          3500,
+          standardElo || 1500
+        )
+      );
+  const blitzElo = isBlitzEloUnknown
+    ? 0
+    : Math.round(
+        clampNumber(
+          Number(input.blitzElo ?? (standardElo || 1500)),
+          600,
+          3500,
+          standardElo || 1500
+        )
+      );
 
   return {
-    name: formatPlayerNameLastFirst(sanitizeString(input.name, 80, 'Adversaire')),
+    name: formatPlayerNameLastFirst(
+      sanitizeString(input.name, 80, isNameUncertain ? 'INCONNU' : 'Adversaire'),
+      isNameUncertain
+    ),
+    isNameUncertain,
     fideId: (input.fideId || '').replace(/[^0-9]/g, '').slice(0, 20),
     ffeId: (input.ffeId || '')
       .toUpperCase()
@@ -208,6 +333,11 @@ export function sanitizeOpponentPayload(
     standardElo,
     rapidElo,
     blitzElo,
+    isEloUnknown:
+      isStandardEloUnknown && isRapidEloUnknown && isBlitzEloUnknown,
+    isStandardEloUnknown,
+    isRapidEloUnknown,
+    isBlitzEloUnknown,
     title: VALID_TITLES.includes(input.title) ? input.title : 'None',
     federation:
       (input.federation || 'FRA')
@@ -234,7 +364,7 @@ export function sanitizeTournamentPayload(
 
   return {
     ownerId,
-    name: sanitizeString(input.name, 120, 'Tournoi FIDE'),
+    name: sanitizeString(input.name, 120, 'Tournoi'),
     location: sanitizeString(input.location, 100, 'France'),
     startDate,
     endDate,
@@ -288,17 +418,38 @@ export function sanitizeFideGamePayload(
     ? input.termination
     : 'Resignation';
 
+  const opponentNameUncertain =
+    Boolean(input.opponentNameUncertain) ||
+    hasQuestionMarkInName(input.opponentName);
+  const opponentEloUnknown =
+    Boolean(input.opponentEloUnknown) || Number(input.opponentElo) <= 0;
+
+  const isFreeGame =
+    !input.tournamentId || input.tournamentId === FREE_GAME_TOURNAMENT_ID;
+
   return {
     ownerId,
-    tournamentId: sanitizeString(input.tournamentId, 128, 'default_tourney'),
-    tournamentName: sanitizeString(input.tournamentName, 120, 'Tournoi FIDE'),
-    round: Math.round(clampNumber(Number(input.round), 1, 30, 1)),
+    tournamentId: isFreeGame
+      ? FREE_GAME_TOURNAMENT_ID
+      : sanitizeString(input.tournamentId, 128, FREE_GAME_TOURNAMENT_ID),
+    tournamentName: isFreeGame
+      ? sanitizeString(input.tournamentName, 120, FREE_GAME_TOURNAMENT_NAME)
+      : sanitizeString(input.tournamentName, 120, 'Tournoi'),
+    round: Math.round(clampNumber(Number(input.round), 1, 50, 1)),
     datePlayed,
     timeControl: tc,
     playerColor: color,
-    playerElo: Math.round(clampNumber(Number(input.playerElo), 800, 3500, 1500)),
+    playerElo: Math.round(clampNumber(Number(input.playerElo), 600, 3500, 1500)),
     opponentId: input.opponentId || undefined,
-    opponentName: sanitizeString(input.opponentName, 80, 'Adversaire'),
+    opponentName: formatPlayerNameLastFirst(
+      sanitizeString(
+        input.opponentName,
+        80,
+        opponentNameUncertain ? 'INCONNU' : 'Adversaire'
+      ),
+      opponentNameUncertain
+    ),
+    opponentNameUncertain,
     opponentFideId: (input.opponentFideId || '')
       .replace(/[^0-9]/g, '')
       .slice(0, 20),
@@ -307,20 +458,22 @@ export function sanitizeFideGamePayload(
       .replace(/[^A-Z0-9]/g, '')
       .slice(0, 15),
     opponentTitle: oppTitle,
-    opponentElo: Math.round(
-      clampNumber(Number(input.opponentElo), 800, 3500, 1500)
-    ),
+    opponentElo: opponentEloUnknown
+      ? 0
+      : Math.round(clampNumber(Number(input.opponentElo), 600, 3500, 1500)),
+    opponentEloUnknown,
     opponentFederation: oppFed,
     result: res,
     playerScore: score,
-    eloChange:
-      Math.round(clampNumber(Number(input.eloChange), -150, 150, 0) * 10) / 10,
+    eloChange: opponentEloUnknown
+      ? 0
+      : Math.round(clampNumber(Number(input.eloChange), -150, 150, 0) * 10) / 10,
     kFactorUsed: validK,
     ecoCode: sanitizeString((input.ecoCode || '').toUpperCase(), 6, ''),
     openingName: sanitizeString(input.openingName, 120, ''),
     movesCount: Math.round(clampNumber(Number(input.movesCount), 0, 300, 0)),
     termination: validTerm,
-    pgn: sanitizeString(input.pgn, 8000, ''),
+    pgn: sanitizeString(input.pgn, 12000, ''),
     chessComUrl: sanitizeString(input.chessComUrl, 500, ''),
     keyMomentNote: sanitizeString(input.keyMomentNote, 1000, ''),
   };

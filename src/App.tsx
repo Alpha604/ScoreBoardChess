@@ -68,7 +68,9 @@ import {
 } from './types/fide';
 import { calculateFidePerformanceRating } from './utils/fideMath';
 import {
+  formatPlayerNameDisplay,
   formatPlayerNameLastFirst,
+  hasQuestionMarkName,
   sanitizeFideGamePayload,
   sanitizeMonthlyRatingPayload,
   sanitizeOpponentPayload,
@@ -528,9 +530,14 @@ export default function App() {
 
   const handleSaveTournament = async (
     input: Omit<Tournament, 'id' | 'ownerId'>,
-    existingId?: string
+    existingId?: string,
+    initialGames?: Omit<
+      FideGame,
+      'id' | 'ownerId' | 'tournamentId' | 'tournamentName'
+    >[]
   ) => {
     const clean = sanitizeTournamentPayload('default_player', input);
+    const newTournamentId = existingId || `t_${Date.now().toString(36)}`;
     const nextTournaments = existingId
       ? tournaments.map((t) =>
           t.id === existingId ? { ...clean, id: existingId } : t
@@ -539,9 +546,21 @@ export default function App() {
           ...tournaments,
           {
             ...clean,
-            id: `t_${Date.now().toString(36)}`,
+            id: newTournamentId,
           },
         ];
+
+    const createdGames: FideGame[] =
+      !existingId && initialGames && initialGames.length > 0
+        ? initialGames.map((dg, idx) => ({
+            ...sanitizeFideGamePayload('default_player', {
+              ...dg,
+              tournamentId: newTournamentId,
+              tournamentName: clean.name,
+            }),
+            id: `g_${Date.now().toString(36)}_${idx}`,
+          }))
+        : [];
 
     const nextGames = existingId
       ? games.map((g) =>
@@ -553,7 +572,7 @@ export default function App() {
               }
             : g
         )
-      : games;
+      : [...games, ...createdGames];
 
     await persistUpdate({
       ...dbState,
@@ -788,9 +807,14 @@ export default function App() {
 
   const handleSaveFriendlyTournament = async (
     input: Omit<Tournament, 'id' | 'ownerId'>,
-    existingId?: string
+    existingId?: string,
+    initialGames?: Omit<
+      FideGame,
+      'id' | 'ownerId' | 'tournamentId' | 'tournamentName'
+    >[]
   ) => {
     const clean = sanitizeTournamentPayload('default_player', input);
+    const newTournamentId = existingId || `ft_${Date.now().toString(36)}`;
     const nextTournaments = existingId
       ? friendlyTournaments.map((t) =>
           t.id === existingId ? { ...clean, id: existingId } : t
@@ -799,9 +823,23 @@ export default function App() {
           ...friendlyTournaments,
           {
             ...clean,
-            id: `ft_${Date.now().toString(36)}`,
+            id: newTournamentId,
           },
         ];
+
+    const createdGames: FideGame[] =
+      !existingId && initialGames && initialGames.length > 0
+        ? initialGames.map((dg, idx) => ({
+            ...sanitizeFideGamePayload('default_player', {
+              ...dg,
+              tournamentId: newTournamentId,
+              tournamentName: clean.name,
+              eloChange: 0,
+            }),
+            eloChange: 0,
+            id: `fg_${Date.now().toString(36)}_${idx}`,
+          }))
+        : [];
 
     const nextGames = existingId
       ? friendlyGames.map((g) =>
@@ -813,7 +851,7 @@ export default function App() {
               }
             : g
         )
-      : friendlyGames;
+      : [...friendlyGames, ...createdGames];
 
     await persistFriendlyUpdate({
       ...friendlyDbState,
@@ -850,7 +888,10 @@ export default function App() {
     input: Omit<FideGame, 'id' | 'ownerId'>,
     existingId?: string
   ) => {
-    const clean = sanitizeFideGamePayload('default_player', input);
+    const clean = {
+      ...sanitizeFideGamePayload('default_player', input),
+      eloChange: 0,
+    };
     const nextGames = existingId
       ? friendlyGames.map((g) =>
           g.id === existingId ? { ...clean, id: existingId } : g
@@ -1122,21 +1163,21 @@ export default function App() {
   ];
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#efece6] text-[#1c222b]">
+    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 text-slate-900">
       {/* BARRE DE NAVIGATION LATÉRALE GAUCHE (Desktop) */}
-      <aside className="hidden md:flex md:w-68 xl:w-72 shrink-0 bg-[#1e2430] text-[#ebe8e0] flex-col justify-between sticky top-0 h-screen border-r border-[#2c3444] select-none">
-        <div className="p-5 space-y-5 overflow-y-auto">
+      <aside className="hidden md:flex md:w-64 xl:w-68 shrink-0 bg-slate-900 text-slate-200 flex-col justify-between sticky top-0 h-screen border-r border-slate-800 select-none">
+        <div className="p-4 space-y-5 overflow-y-auto">
           {/* Marque / Titre */}
           <div className="flex items-center gap-3 px-2 pt-1">
-            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 flex items-center justify-center shrink-0">
-              <Trophy className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-md bg-slate-800 border border-slate-700 text-slate-200 flex items-center justify-center shrink-0">
+              <Trophy className="w-4 h-4" />
             </div>
             <div>
-              <div className="text-base font-bold tracking-tight text-[#f7f5f0] leading-tight">
+              <div className="text-sm font-bold tracking-tight text-white leading-tight">
                 FIDE Chess Ledger
               </div>
-              <div className="text-xs text-[#9ca6b8]">
-                Carnet Classé & Amical
+              <div className="text-[11px] text-slate-400">
+                Registre Officiel & Amical
               </div>
             </div>
           </div>
@@ -1145,33 +1186,33 @@ export default function App() {
           <button
             type="button"
             onClick={() => setIsProfileModalOpen(true)}
-            className="w-full text-left p-3.5 rounded-2xl bg-[#272f3d] hover:bg-[#2e3747] border border-[#364052] transition-colors cursor-pointer space-y-2.5"
+            className="w-full text-left p-3 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 transition-colors cursor-pointer space-y-2"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-bold text-[#f7f5f0] truncate">
+              <span className="text-xs font-bold text-white truncate">
                 {profile?.displayName || 'Mon Profil'}
               </span>
-              <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-200 border border-indigo-400/25">
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">
                 K={profile?.kFactor || 20}
               </span>
             </div>
 
             <div className="grid grid-cols-3 gap-1.5 text-center font-mono">
-              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
-                <div className="text-[10px] text-[#9ca6b8] font-sans">Class.</div>
-                <div className="text-xs font-bold text-indigo-300">
+              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-sans">Class.</div>
+                <div className="text-xs font-bold text-white">
                   {dashboardStats.currentStd}
                 </div>
               </div>
-              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
-                <div className="text-[10px] text-[#9ca6b8] font-sans">Rapide</div>
-                <div className="text-xs font-bold text-amber-300">
+              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-sans">Rapide</div>
+                <div className="text-xs font-bold text-slate-200">
                   {dashboardStats.currentRapid}
                 </div>
               </div>
-              <div className="p-1.5 rounded-lg bg-[#1e2430]/80">
-                <div className="text-[10px] text-[#9ca6b8] font-sans">Blitz</div>
-                <div className="text-xs font-bold text-sky-300">
+              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
+                <div className="text-[10px] text-slate-400 font-sans">Blitz</div>
+                <div className="text-xs font-bold text-slate-200">
                   {dashboardStats.currentBlitz}
                 </div>
               </div>
@@ -1180,8 +1221,8 @@ export default function App() {
 
           {/* Menu 1 : Base Classée FIDE */}
           <nav className="space-y-1">
-            <div className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-indigo-300/90">
-              1 · Parties Classées (Bin #1)
+            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Classement FIDE (Bin #1)
             </div>
             {fideNavItems.map((item) => {
               const Icon = item.icon;
@@ -1194,26 +1235,26 @@ export default function App() {
                     if (item.id === 'players') setSelectedOpponentId(null);
                     setActiveTab(item.id);
                   }}
-                  className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                     isActive
-                      ? 'bg-indigo-600 text-white shadow-sm'
-                      : 'text-[#c9c6be] hover:bg-[#28303f] hover:text-white'
+                      ? 'bg-white text-slate-900'
+                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                   }`}
                 >
-                  <span className="flex items-center gap-3">
+                  <span className="flex items-center gap-2.5">
                     <Icon
                       className={`w-4 h-4 ${
-                        isActive ? 'text-white' : 'text-[#9ca6b8]'
+                        isActive ? 'text-slate-900' : 'text-slate-400'
                       }`}
                     />
                     <span>{item.label}</span>
                   </span>
                   {item.badge !== undefined && (
                     <span
-                      className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                      className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${
                         isActive
-                          ? 'bg-indigo-800/80 text-indigo-100'
-                          : 'bg-[#28303f] text-[#aeb6c4]'
+                          ? 'bg-slate-200 text-slate-900 font-bold'
+                          : 'bg-slate-800 text-slate-400'
                       }`}
                     >
                       {item.badge}
@@ -1225,32 +1266,32 @@ export default function App() {
           </nav>
 
           {/* Menu 2 : Espace Indépendant Parties Amicales */}
-          <nav className="space-y-1 pt-2 border-t border-[#2c3444]">
-            <div className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-emerald-300/90">
-              2 · Espace Indépendant (Bin #2)
+          <nav className="space-y-1 pt-2 border-t border-slate-800">
+            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Hors Classement (Bin #2)
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('friendly')}
-              className={`w-full flex items-center justify-between gap-3 px-4 py-3 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                 activeTab === 'friendly'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-[#c9c6be] bg-emerald-950/30 border border-emerald-500/20 hover:bg-emerald-900/40 hover:text-white'
+                  ? 'bg-white text-slate-900'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <span className="flex items-center gap-3">
+              <span className="flex items-center gap-2.5">
                 <Coffee
                   className={`w-4 h-4 ${
-                    activeTab === 'friendly' ? 'text-white' : 'text-emerald-400'
+                    activeTab === 'friendly' ? 'text-slate-900' : 'text-slate-400'
                   }`}
                 />
                 <span>Parties Amicales</span>
               </span>
               <span
-                className={`text-xs font-mono px-2 py-0.5 rounded-md ${
+                className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${
                   activeTab === 'friendly'
-                    ? 'bg-emerald-800 text-emerald-100'
-                    : 'bg-[#28303f] text-emerald-300'
+                    ? 'bg-slate-200 text-slate-900 font-bold'
+                    : 'bg-slate-800 text-slate-400'
                 }`}
               >
                 {friendlyGames.length}
@@ -1259,29 +1300,29 @@ export default function App() {
           </nav>
 
           {/* Menu 3 : Paramètres, Statuts JSONBin & Cache Local */}
-          <nav className="space-y-1 pt-2 border-t border-[#2c3444]">
-            <div className="px-3 pb-1 text-[11px] font-bold uppercase tracking-wider text-[#8c96a8]">
-              Système & Restauration
+          <nav className="space-y-1 pt-2 border-t border-slate-800">
+            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+              Système & Sauvegardes
             </div>
             <button
               type="button"
               onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all cursor-pointer ${
+              className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
                 activeTab === 'settings'
-                  ? 'bg-violet-600 text-white shadow-sm'
-                  : 'text-[#c9c6be] hover:bg-[#28303f] hover:text-white'
+                  ? 'bg-white text-slate-900'
+                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
               }`}
             >
-              <span className="flex items-center gap-3">
+              <span className="flex items-center gap-2.5">
                 <Settings
                   className={`w-4 h-4 ${
-                    activeTab === 'settings' ? 'text-white' : 'text-[#9ca6b8]'
+                    activeTab === 'settings' ? 'text-slate-900' : 'text-slate-400'
                   }`}
                 />
                 <span>Paramètres & Cache</span>
               </span>
               {deletedVault.length > 0 && (
-                <span className="text-[11px] font-mono px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-300 border border-amber-400/30">
+                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
                   {deletedVault.length}
                 </span>
               )}
@@ -1290,10 +1331,10 @@ export default function App() {
         </div>
 
         {/* Bas de la barre latérale : Statut rapide des 2 Bins & Déconnexion */}
-        <div className="p-4 border-t border-[#2c3444] bg-[#191e28] space-y-2.5">
-          <div className="space-y-1 px-1 text-[11px] text-[#9ca6b8]">
+        <div className="p-4 border-t border-slate-800 bg-slate-950/50 space-y-2.5">
+          <div className="space-y-1 px-1 text-[11px] text-slate-400">
             <div className="flex items-center justify-between">
-              <span>Bin #1 (Classé)</span>
+              <span>Bin #1 (FIDE)</span>
               <span
                 className={`font-mono ${
                   fideStatus.state === 'error'
@@ -1301,7 +1342,7 @@ export default function App() {
                     : 'text-emerald-400'
                 }`}
               >
-                ● {fideStatus.state === 'syncing' ? 'Sync...' : 'Actif'}
+                ● {fideStatus.state === 'syncing' ? 'Sync...' : 'Connecté'}
               </span>
             </div>
             <div className="flex items-center justify-between">
@@ -1318,7 +1359,7 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
               onClick={() =>
@@ -1327,59 +1368,59 @@ export default function App() {
                   : loadFromJsonBin()
               }
               disabled={isLoading || isSyncing || isSyncingFriendly}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#e5e2da] bg-[#272f3d] hover:bg-[#323c4e] border border-[#364052] rounded-xl transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors cursor-pointer"
               title="Actualiser le JSONBin actif"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${
                   isLoading || isSyncing || isSyncingFriendly
-                    ? 'animate-spin text-indigo-300'
+                    ? 'animate-spin text-white'
                     : ''
                 }`}
               />
-              Actualiser
+              Sync
             </button>
 
             <button
               type="button"
               onClick={() => setIsProfileModalOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-3 py-2 text-xs font-semibold text-[#e5e2da] bg-[#272f3d] hover:bg-[#323c4e] border border-[#364052] rounded-xl transition-colors cursor-pointer"
+              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors cursor-pointer"
             >
-              <UserCheck className="w-3.5 h-3.5 text-indigo-300" />
-              Mon Profil
+              <UserCheck className="w-3.5 h-3.5 text-slate-300" />
+              Profil
             </button>
           </div>
 
           <button
             type="button"
             onClick={handleLogout}
-            className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-xs font-semibold text-rose-300 hover:text-white hover:bg-rose-900/40 rounded-xl transition-colors cursor-pointer"
+            className="w-full inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
           >
             <LogOut className="w-3.5 h-3.5" />
-            Changer de compte / Déconnexion
+            Déconnexion
           </button>
         </div>
       </aside>
 
       {/* Navigation Mobile (Bandeau supérieur uniquement sur petit écran) */}
-      <div className="md:hidden bg-[#1e2430] text-[#f7f5f0] p-4 space-y-3 border-b border-[#2c3444]">
+      <div className="md:hidden bg-slate-900 text-white p-4 space-y-3 border-b border-slate-800">
         <div className="flex items-center justify-between">
-          <div className="font-bold text-base flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-indigo-400" />
+          <div className="font-bold text-sm flex items-center gap-2">
+            <Trophy className="w-4 h-4 text-slate-300" />
             FIDE Chess Ledger
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => setIsProfileModalOpen(true)}
-              className="px-3 py-1.5 text-xs font-semibold bg-[#272f3d] rounded-lg"
+              className="px-2.5 py-1 text-xs font-semibold bg-slate-800 rounded-md"
             >
               {profile?.displayName || 'Profil'}
             </button>
             <button
               type="button"
               onClick={handleLogout}
-              className="p-1.5 text-rose-300 bg-[#272f3d] rounded-lg"
+              className="p-1.5 text-slate-300 bg-slate-800 rounded-md"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -1397,10 +1438,10 @@ export default function App() {
                   if (item.id === 'players') setSelectedOpponentId(null);
                   setActiveTab(item.id);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap ${
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
                   active
-                    ? 'bg-indigo-600 text-white'
-                    : 'bg-[#272f3d] text-[#c9c6be]'
+                    ? 'bg-white text-slate-900'
+                    : 'bg-slate-800 text-slate-300'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
@@ -1411,10 +1452,10 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('friendly')}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
               activeTab === 'friendly'
-                ? 'bg-emerald-600 text-white'
-                : 'bg-emerald-950/60 text-emerald-300 border border-emerald-500/30'
+                ? 'bg-white text-slate-900'
+                : 'bg-slate-800 text-slate-300'
             }`}
           >
             <Coffee className="w-3.5 h-3.5" />
@@ -1423,23 +1464,23 @@ export default function App() {
           <button
             type="button"
             onClick={() => setActiveTab('settings')}
-            className={`inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
               activeTab === 'settings'
-                ? 'bg-violet-600 text-white'
-                : 'bg-[#272f3d] text-[#c9c6be]'
+                ? 'bg-white text-slate-900'
+                : 'bg-slate-800 text-slate-300'
             }`}
           >
             <Settings className="w-3.5 h-3.5" />
-            Paramètres & Cache
+            Paramètres
           </button>
         </div>
       </div>
 
       {/* Zone Principale de Contenu à Droite */}
       <div className="flex-1 min-w-0 flex flex-col justify-between">
-        <main className="max-w-[1260px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-8 space-y-7">
+        <main className="max-w-[1260px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-7 space-y-6">
           {errorBanner && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start justify-between gap-3 text-xs text-rose-900">
+            <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg flex items-start justify-between gap-3 text-xs text-rose-900">
               <div className="flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
                 <div className="font-mono break-all">{errorBanner}</div>
@@ -1460,31 +1501,31 @@ export default function App() {
             activeTab !== 'settings' &&
             games.length === 0 &&
             tournaments.length === 0 && (
-              <div className="bg-white border-2 border-indigo-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-                <div className="space-y-1.5 max-w-2xl">
-                  <h2 className="text-base font-bold text-indigo-950">
-                    Votre espace JSONBin Classé (#1) est connecté et prêt à l’emploi
+              <div className="bg-white border border-slate-300 rounded-lg p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
+                <div className="space-y-1 max-w-2xl">
+                  <h2 className="text-sm font-bold text-slate-900">
+                    Base JSONBin Classée (#1) prête à l’emploi
                   </h2>
-                  <p className="text-sm text-slate-600">
-                    Vous pouvez commencer à créer vos tournois et vos joueurs dès maintenant, ou charger en 1 clic un exemple complet (3 tournois, 7 parties, 6 joueurs FIDE/FFE avec Elos Classique/Rapide/Blitz et 12 mois d’Elo).
+                  <p className="text-xs text-slate-600">
+                    Vous pouvez enregistrer vos tournois et parties dès maintenant, ou charger des données d’exemple pour explorer l’interface.
                   </p>
                 </div>
-                <div className="flex flex-wrap items-center gap-3 shrink-0">
+                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                   <button
                     type="button"
                     onClick={handleLoadSampleData}
                     disabled={isSyncing}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
+                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
                   >
-                    <Database className="w-4 h-4" />
+                    <Database className="w-3.5 h-3.5" />
                     {isSyncing
                       ? 'Chargement...'
-                      : 'Charger des données d’exemple (Modifiables)'}
+                      : 'Charger des données d’exemple'}
                   </button>
                   <button
                     type="button"
                     onClick={() => setActiveTab('tournaments')}
-                    className="px-4 py-2.5 text-xs font-semibold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 rounded-xl"
+                    className="px-3.5 py-2 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer"
                   >
                     Créer mon premier tournoi
                   </button>
@@ -1496,152 +1537,124 @@ export default function App() {
           {activeTab === 'dashboard' && (
             <div className="space-y-6">
               {/* Carte Principale du Joueur */}
-              <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-6 space-y-6 shadow-2xs">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+              <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-5 shadow-2xs">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
                   <div>
                     <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-mono">
-                      <span className="text-indigo-700 font-semibold">
+                      <span className="font-semibold text-slate-800">
                         ID FIDE : {profile?.fideId || 'Non renseigné'}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span className="text-amber-800 font-semibold">
+                      <span className="font-semibold text-slate-800">
                         Code FFE : {profile?.ffeId || 'Non renseigné'}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span className="text-slate-700 font-semibold">
+                      <span className="font-semibold text-slate-600">
                         Facteur K = {profile?.kFactor || 20}
                       </span>
                       {profile?.club && (
                         <>
                           <span aria-hidden="true">·</span>
-                          <span className="font-sans font-semibold text-slate-800">
+                          <span className="font-sans font-semibold text-slate-700">
                             {profile.club}
                           </span>
                         </>
                       )}
                     </div>
-                    <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1.5">
+                    <h1 className="text-2xl font-bold text-slate-900 mt-1">
                       {profile?.displayName || 'Mon Profil Échecs'}
                     </h1>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setActiveTab('tournaments')}
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
                     >
-                      <Plus className="w-4 h-4" />
-                      Rentrer un tournoi / une partie
+                      <Plus className="w-3.5 h-3.5" />
+                      Enregistrer un tournoi / une partie
                     </button>
                     <button
                       type="button"
                       onClick={() => setActiveTab('friendly')}
-                      className="inline-flex items-center gap-1.5 px-4 py-2.5 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-md transition-colors cursor-pointer"
                     >
-                      <Coffee className="w-4 h-4 text-emerald-700" />
-                      Espace Parties Amicales ({friendlyGames.length})
+                      <Coffee className="w-3.5 h-3.5 text-slate-700" />
+                      Parties Amicales ({friendlyGames.length})
                     </button>
                   </div>
                 </div>
 
-                {/* Les 6 Chiffres Clés du Dashboard avec Couleurs Sémantiques */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 font-mono tabular-nums">
-                  <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl">
-                    <div className="text-xs font-sans font-bold text-indigo-900">
+                {/* Les 6 Indicateurs Clés du Dashboard (Sobres et Professionnels) */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
                       Elo Classique
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-indigo-700 mt-1">
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
                       {dashboardStats.currentStd}
                     </div>
-                    <div className="text-[11px] font-sans font-medium text-indigo-800/80 mt-1">
+                    <div className="text-[11px] font-sans text-slate-500 mt-1">
                       Objectif : {profile?.targetElo || 2000}
                     </div>
                   </div>
 
-                  <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl">
-                    <div className="text-xs font-sans font-bold text-amber-900">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
                       Elo Rapide
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-amber-700 mt-1">
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
                       {dashboardStats.currentRapid}
                     </div>
-                    <div className="text-[11px] font-sans font-medium text-amber-800/80 mt-1">
+                    <div className="text-[11px] font-sans text-slate-500 mt-1">
                       Cadence rapide
                     </div>
                   </div>
 
-                  <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-xl">
-                    <div className="text-xs font-sans font-bold text-sky-900">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
                       Elo Blitz
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-sky-700 mt-1">
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
                       {dashboardStats.currentBlitz}
                     </div>
-                    <div className="text-[11px] font-sans font-medium text-sky-800/80 mt-1">
+                    <div className="text-[11px] font-sans text-slate-500 mt-1">
                       Cadence blitz
                     </div>
                   </div>
 
-                  <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl">
-                    <div className="text-xs font-sans font-bold text-emerald-900">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
                       Taux de Victoire
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
                       {dashboardStats.winPct}%
                     </div>
-                    <div className="text-[11px] font-semibold text-emerald-800 mt-1">
+                    <div className="text-[11px] font-semibold text-slate-600 mt-1">
                       +{dashboardStats.wins}V · ={dashboardStats.draws}N · -
                       {dashboardStats.losses}D
                     </div>
-                    {dashboardStats.totalGames > 0 && (
-                      <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden flex mt-2">
-                        <div
-                          style={{ width: `${dashboardStats.winPct}%` }}
-                          className="bg-emerald-500 h-full"
-                        />
-                        <div
-                          style={{ width: `${dashboardStats.drawPct}%` }}
-                          className="bg-amber-400 h-full"
-                        />
-                        <div
-                          style={{ width: `${dashboardStats.lossPct}%` }}
-                          className="bg-rose-500 h-full"
-                        />
-                      </div>
-                    )}
                   </div>
 
-                  <div className="p-4 bg-violet-50/70 border border-violet-200 rounded-xl">
-                    <div className="text-xs font-sans font-bold text-violet-900">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
                       Performance FIDE
                     </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold text-violet-700 mt-1">
+                    <div className="text-2xl font-bold text-slate-900 mt-1">
                       {dashboardStats.globalPerf || '—'}
                     </div>
-                    <div className="text-[11px] font-sans font-medium text-violet-800/80 mt-1">
+                    <div className="text-[11px] font-sans text-slate-500 mt-1">
                       Sur {dashboardStats.totalGames} parties
                     </div>
                   </div>
 
-                  <div
-                    className={`p-4 rounded-xl border ${
-                      dashboardStats.netEloTotal >= 0
-                        ? 'bg-emerald-50/70 border-emerald-200'
-                        : 'bg-rose-50/70 border-rose-200'
-                    }`}
-                  >
-                    <div
-                      className={`text-xs font-sans font-bold ${
-                        dashboardStats.netEloTotal >= 0
-                          ? 'text-emerald-900'
-                          : 'text-rose-900'
-                      }`}
-                    >
-                      Bilan Elo Total
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                      Bilan Elo Net
                     </div>
                     <div
-                      className={`text-2xl sm:text-3xl font-extrabold mt-1 ${
+                      className={`text-2xl font-bold mt-1 ${
                         dashboardStats.netEloTotal >= 0
                           ? 'text-emerald-700'
                           : 'text-rose-700'
@@ -1651,42 +1664,30 @@ export default function App() {
                         ? `+${dashboardStats.netEloTotal.toFixed(1)}`
                         : dashboardStats.netEloTotal.toFixed(1)}
                     </div>
-                    <div
-                      className={`text-[11px] font-sans font-medium mt-1 ${
-                        dashboardStats.netEloTotal >= 0
-                          ? 'text-emerald-800/80'
-                          : 'text-rose-800/80'
-                      }`}
-                    >
-                      Points gagnés
+                    <div className="text-[11px] font-sans text-slate-500 mt-1">
+                      Variation cumulée
                     </div>
                   </div>
                 </div>
               </div>
 
               {/* Graphique d'évolution mensuelle sur le Dashboard */}
-              <div className="bg-white border border-slate-200 rounded-2xl p-6 space-y-4 shadow-2xs">
+              <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4 shadow-2xs">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div>
-                    <h2 className="text-lg font-bold text-slate-900">
-                      Évolution de mon classement Elo au fil des mois
+                    <h2 className="text-base font-bold text-slate-900">
+                      Évolution mensuelle du classement Elo
                     </h2>
-                    <p className="text-xs text-slate-600">
-                      Courbes colorées :{' '}
-                      <strong className="text-indigo-700">
-                        Classique (Indigo)
-                      </strong>
-                      ,{' '}
-                      <strong className="text-amber-700">Rapide (Ambre)</strong>{' '}
-                      et <strong className="text-sky-700">Blitz (Bleu)</strong>.
+                    <p className="text-xs text-slate-500">
+                      Suivi comparatif des trois cadences (Classique, Rapide et Blitz).
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={() => setActiveTab('statistics')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 rounded-xl transition-colors"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
                   >
-                    Voir toutes mes statistiques & ajouter un mois
+                    Statistiques détaillées
                     <ArrowUpRight className="w-3.5 h-3.5" />
                   </button>
                 </div>
@@ -1698,30 +1699,30 @@ export default function App() {
               </div>
 
               {/* Résumé des Derniers Tournois & Principaux Adversaires */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
                 {/* Derniers Tournois */}
-                <div className="lg:col-span-7 bg-white border border-slate-200 border-t-4 border-t-amber-500 rounded-2xl overflow-hidden shadow-2xs">
-                  <div className="px-6 py-4 border-b border-slate-200 bg-amber-50/30 flex items-center justify-between">
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-amber-600" />
-                      Mes Tournois Classés Récents ({tournaments.length})
+                <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+                  <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Trophy className="w-4 h-4 text-slate-600" />
+                      Tournois Classés Récents ({tournaments.length})
                     </h3>
                     <button
                       type="button"
                       onClick={() => setActiveTab('tournaments')}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-amber-800 hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                     >
-                      Gérer mes tournois
+                      Tout voir
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   {tournaments.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-slate-500">
+                    <div className="p-8 text-center text-xs text-slate-500">
                       Aucun tournoi enregistré.
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-200 text-sm">
+                    <div className="divide-y divide-slate-200 text-xs">
                       {tournaments
                         .slice()
                         .sort((a, b) => b.startDate.localeCompare(a.startDate))
@@ -1740,18 +1741,6 @@ export default function App() {
                                 10
                             ) / 10;
                           const perf = calculateFidePerformanceRating(tGames);
-                          const cadenceBorder =
-                            t.timeControl === 'Rapid'
-                              ? 'border-l-4 border-l-amber-500'
-                              : t.timeControl === 'Blitz'
-                              ? 'border-l-4 border-l-sky-500'
-                              : 'border-l-4 border-l-indigo-600';
-                          const cadenceText =
-                            t.timeControl === 'Rapid'
-                              ? 'text-amber-700 font-bold'
-                              : t.timeControl === 'Blitz'
-                              ? 'text-sky-700 font-bold'
-                              : 'text-indigo-700 font-bold';
 
                           return (
                             <div
@@ -1760,39 +1749,39 @@ export default function App() {
                                 setSelectedTournamentFilter(t.id);
                                 setActiveTab('games');
                               }}
-                              className={`p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors ${cadenceBorder}`}
+                              className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
                             >
                               <div>
                                 <div className="font-bold text-slate-900">
                                   {t.name}
                                 </div>
-                                <div className="text-xs text-slate-600 mt-0.5 flex flex-wrap items-center gap-1.5">
+                                <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
                                   <span>{t.location}</span>
                                   <span>·</span>
-                                  <span className={cadenceText}>
+                                  <span className="font-semibold text-slate-700">
                                     {t.timeControl === 'Standard'
                                       ? 'Classique'
                                       : t.timeControl === 'Rapid'
                                       ? 'Rapide'
                                       : 'Blitz'}
                                   </span>
-                                  {t.finalRank && (
+                                  {t.finalRank ? (
                                     <>
                                       <span>·</span>
-                                      <span className="font-semibold text-slate-800">
-                                        Classement : {t.finalRank}e
+                                      <span className="font-semibold text-slate-700">
+                                        Place : {t.finalRank}e
                                         {t.totalPlayers
                                           ? ` / ${t.totalPlayers}`
                                           : ''}
                                       </span>
                                     </>
-                                  )}
+                                  ) : null}
                                 </div>
                               </div>
 
                               <div className="text-right font-mono shrink-0">
                                 <div className="font-bold text-slate-900">
-                                  Score {score}/{tGames.length}{' '}
+                                  {score}/{tGames.length}{' '}
                                   <span
                                     className={
                                       netElo >= 0
@@ -1800,10 +1789,10 @@ export default function App() {
                                         : 'text-rose-700'
                                     }
                                   >
-                                    ({netElo >= 0 ? `+${netElo}` : netElo} Elo)
+                                    ({netElo >= 0 ? `+${netElo}` : netElo})
                                   </span>
                                 </div>
-                                <div className="text-xs font-semibold text-violet-700">
+                                <div className="text-[11px] text-slate-500">
                                   Perf : {perf || '—'}
                                 </div>
                               </div>
@@ -1815,10 +1804,10 @@ export default function App() {
                 </div>
 
                 {/* Derniers Joueurs Affrontés */}
-                <div className="lg:col-span-5 bg-white border border-slate-200 border-t-4 border-t-emerald-500 rounded-2xl overflow-hidden shadow-2xs">
-                  <div className="px-6 py-4 border-b border-slate-200 bg-emerald-50/30 flex items-center justify-between">
-                    <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                      <Users className="w-4 h-4 text-emerald-700" />
+                <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+                  <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                      <Users className="w-4 h-4 text-slate-600" />
                       Joueurs Classés Affrontés ({opponents.length})
                     </h3>
                     <button
@@ -1827,26 +1816,28 @@ export default function App() {
                         setSelectedOpponentId(null);
                         setActiveTab('players');
                       }}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:underline"
+                      className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                     >
-                      Voir tous les joueurs
+                      Répertoire
                       <ArrowUpRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
 
                   {opponents.length === 0 ? (
-                    <div className="p-8 text-center text-sm text-slate-500">
+                    <div className="p-8 text-center text-xs text-slate-500">
                       Aucun adversaire enregistré.
                     </div>
                   ) : (
-                    <div className="divide-y divide-slate-200 text-sm">
+                    <div className="divide-y divide-slate-200 text-xs">
                       {opponents.slice(0, 5).map((opp) => {
                         const oppGames = games.filter(
                           (g) =>
                             g.opponentId === opp.id ||
                             (opp.fideId && g.opponentFideId === opp.fideId) ||
-                            g.opponentName.toLowerCase() ===
-                              opp.name.toLowerCase()
+                            formatPlayerNameLastFirst(
+                              g.opponentName
+                            ).toLowerCase() ===
+                              formatPlayerNameLastFirst(opp.name).toLowerCase()
                         );
                         const wins = oppGames.filter(
                           (g) => g.playerScore === 1
@@ -1861,6 +1852,9 @@ export default function App() {
                           oppGames.length > 0
                             ? Math.round((wins / oppGames.length) * 100)
                             : 0;
+                        const uncertain = Boolean(
+                          opp.isNameUncertain || hasQuestionMarkName(opp.name)
+                        );
 
                         return (
                           <div
@@ -1872,49 +1866,49 @@ export default function App() {
                             className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
                           >
                             <div>
-                              <div className="font-bold text-slate-900 hover:text-indigo-700">
+                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
                                 {opp.title !== 'None' && (
-                                  <span className="font-mono text-amber-700 mr-1">
+                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">
                                     {opp.title}
                                   </span>
                                 )}
-                                {formatPlayerNameLastFirst(opp.name)}
+                                <span>{formatPlayerNameLastFirst(opp.name)}</span>
+                                {uncertain && (
+                                  <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
+                                    ?
+                                  </span>
+                                )}
                               </div>
-                              <div className="text-xs font-mono mt-0.5 flex flex-wrap items-center gap-2">
-                                <span className="text-indigo-700 font-semibold">
-                                  Std {opp.standardElo || opp.elo}
+                              <div className="text-[11px] font-mono text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
+                                <span>
+                                  Std{' '}
+                                  {opp.isStandardEloUnknown || opp.isEloUnknown
+                                    ? '?'
+                                    : opp.standardElo || opp.elo}
                                 </span>
-                                <span className="text-slate-300">·</span>
-                                <span className="text-amber-700 font-semibold">
-                                  Rap {opp.rapidElo || opp.elo}
+                                <span>·</span>
+                                <span>
+                                  Rap{' '}
+                                  {opp.isRapidEloUnknown || opp.isEloUnknown
+                                    ? '?'
+                                    : opp.rapidElo || opp.elo}
                                 </span>
-                                <span className="text-slate-300">·</span>
-                                <span className="text-sky-700 font-semibold">
-                                  Blz {opp.blitzElo || opp.elo}
+                                <span>·</span>
+                                <span>
+                                  Blz{' '}
+                                  {opp.isBlitzEloUnknown || opp.isEloUnknown
+                                    ? '?'
+                                    : opp.blitzElo || opp.elo}
                                 </span>
                               </div>
                             </div>
 
                             <div className="text-right font-mono shrink-0">
-                              <div
-                                className={`font-bold ${
-                                  winRate >= 50
-                                    ? 'text-emerald-700'
-                                    : 'text-amber-700'
-                                }`}
-                              >
+                              <div className="font-bold text-slate-900">
                                 {winRate}% victoires
                               </div>
-                              <div className="text-xs text-slate-600">
-                                <span className="text-emerald-700 font-semibold">
-                                  +{wins}
-                                </span>{' '}
-                                <span className="text-amber-700 font-semibold">
-                                  ={draws}
-                                </span>{' '}
-                                <span className="text-rose-700 font-semibold">
-                                  -{losses}
-                                </span>
+                              <div className="text-[11px] text-slate-500">
+                                +{wins}V · ={draws}N · -{losses}D
                               </div>
                             </div>
                           </div>

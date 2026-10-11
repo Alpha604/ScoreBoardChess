@@ -1,8 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowUpRight,
-  Coffee,
   Database,
+  FileText,
   LayoutDashboard,
   Plus,
   RefreshCw,
@@ -21,12 +21,17 @@ import {
   PlayerProfile,
   Tournament,
 } from '../types/fide';
-import { formatPlayerNameLastFirst } from '../utils/fideValidation';
+import {
+  formatPlayerNameDisplay,
+  formatPlayerNameLastFirst,
+  FREE_GAME_TOURNAMENT_ID,
+  hasQuestionMarkName,
+} from '../utils/fideValidation';
 import { GamesSection } from './GamesSection';
 import { PlayersSection } from './PlayersSection';
 import { TournamentsSection } from './TournamentsSection';
 
-type FriendlySubTab = 'overview' | 'tournaments' | 'games' | 'players';
+type FriendlySubTab = 'overview' | 'games' | 'tournaments' | 'players';
 
 interface FriendlySectionProps {
   friendlyDb: FriendlyLedgerDatabase;
@@ -36,7 +41,11 @@ interface FriendlySectionProps {
   onRefreshFriendlyBin: () => Promise<void>;
   onSaveTournament: (
     input: Omit<Tournament, 'id' | 'ownerId'>,
-    existingId?: string
+    existingId?: string,
+    initialGames?: Omit<
+      FideGame,
+      'id' | 'ownerId' | 'tournamentId' | 'tournamentName'
+    >[]
   ) => Promise<void>;
   onDeleteTournament: (id: string) => Promise<void>;
   onSaveGame: (
@@ -89,6 +98,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
     const drawPct = total > 0 ? Math.round((draws / total) * 100) : 0;
     const lossPct = total > 0 ? Math.max(0, 100 - winPct - drawPct) : 0;
 
+    const freeGamesCount = games.filter(
+      (g) => !g.tournamentId || g.tournamentId === FREE_GAME_TOURNAMENT_ID
+    ).length;
     const stdGames = games.filter((g) => g.timeControl === 'Standard').length;
     const rapidGames = games.filter((g) => g.timeControl === 'Rapid').length;
     const blitzGames = games.filter((g) => g.timeControl === 'Blitz').length;
@@ -101,6 +113,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
       winPct,
       drawPct,
       lossPct,
+      freeGamesCount,
       stdGames,
       rapidGames,
       blitzGames,
@@ -113,68 +126,75 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
     icon: React.ComponentType<{ className?: string }>;
     count?: number;
   }[] = [
-    { id: 'overview', label: 'Vue d’ensemble Amicale', icon: LayoutDashboard },
-    {
-      id: 'tournaments',
-      label: 'Tournois & Sessions Amicales',
-      icon: Trophy,
-      count: tournaments.length,
-    },
+    { id: 'overview', label: 'Vue d’ensemble', icon: LayoutDashboard },
     {
       id: 'games',
-      label: 'Parties Amicales',
+      label: 'Parties Amicales (Libres & Sessions)',
       icon: Swords,
       count: games.length,
     },
     {
+      id: 'tournaments',
+      label: 'Sessions & Tournois Amicaux',
+      icon: Trophy,
+      count: tournaments.length,
+    },
+    {
       id: 'players',
-      label: 'Amis & Joueurs Affrontés',
+      label: 'Joueurs Affrontés',
       icon: Users,
       count: opponents.length,
     },
   ];
 
   return (
-    <div className="space-y-6">
-      {/* En-tête de l'Espace Parties Amicales (100% Indépendant) */}
-      <div className="bg-white border-2 border-emerald-200 border-t-4 border-t-emerald-600 rounded-2xl p-6 shadow-2xs space-y-5">
+    <div className="space-y-5">
+      {/* En-tête sobre et professionnel de l'Espace Parties Amicales */}
+      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-          <div className="space-y-1.5">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-lg bg-emerald-50 border border-emerald-200 text-xs font-extrabold text-emerald-900">
-              <Coffee className="w-3.5 h-3.5 text-emerald-600" />
-              ESPACE 100% INDÉPENDANT · BASE JSONBIN #2 ({friendlyStatus.binId})
+          <div className="space-y-1">
+            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-[11px] font-mono font-bold text-slate-800">
+              BASE INDÉPENDANTE · JSONBIN #2 ({friendlyStatus.binId}) · AUCUN IMPACT ELO
             </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-              Carnet des Parties Amicales & Entraînement
+            <h1 className="text-xl font-bold text-slate-900">
+              Registre des Parties Amicales & Entraînement
             </h1>
-            <p className="text-sm text-slate-600">
-              Gérez vos parties entre amis, soirées blitz au club et tournois non homologués.{' '}
-              <strong className="text-emerald-800">
-                Aucune partie, aucun joueur ni aucun tournoi de cet espace n’est mélangé avec vos parties classées FIDE.
-              </strong>
+            <p className="text-xs text-slate-600">
+              Enregistrez vos parties amicales libres (sans tournoi) ou vos sessions d’entraînement. Les parties amicales ne génèrent ni gain ni perte d’Elo.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTournamentFilter(FREE_GAME_TOURNAMENT_ID);
+                setSubTab('games');
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              Parties libres (hors tournoi)
+            </button>
             <button
               type="button"
               onClick={onRefreshFriendlyBin}
               disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-md transition-colors cursor-pointer disabled:opacity-50"
               title="Synchroniser uniquement le JSONBin des parties amicales (1 requête GET)"
             >
               <RefreshCw
-                className={`w-4 h-4 text-emerald-700 ${
+                className={`w-3.5 h-3.5 text-slate-600 ${
                   isSyncingFriendly ? 'animate-spin' : ''
                 }`}
               />
-              {isSyncingFriendly ? 'Synchro Bin Amical...' : 'Actualiser le Bin Amical'}
+              {isSyncingFriendly ? 'Synchronisation...' : 'Actualiser Bin #2'}
             </button>
           </div>
         </div>
 
         {/* Barre de sous-navigation de l'espace amical */}
-        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+        <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200">
           {subNavItems.map((item) => {
             const Icon = item.icon;
             const active = subTab === item.id;
@@ -186,19 +206,19 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                   if (item.id === 'players') setSelectedOpponentId(null);
                   setSubTab(item.id);
                 }}
-                className={`inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-bold transition-colors cursor-pointer ${
                   active
-                    ? 'bg-emerald-600 text-white shadow-2xs'
-                    : 'bg-slate-100 text-slate-700 hover:bg-emerald-50 hover:text-emerald-900'
+                    ? 'bg-slate-900 text-white'
+                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
                 }`}
               >
-                <Icon className="w-4 h-4" />
+                <Icon className="w-3.5 h-3.5" />
                 <span>{item.label}</span>
                 {item.count !== undefined && (
                   <span
-                    className={`font-mono px-1.5 py-0.5 rounded-md text-[11px] ${
+                    className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${
                       active
-                        ? 'bg-emerald-800 text-emerald-100'
+                        ? 'bg-slate-700 text-slate-100'
                         : 'bg-white text-slate-700 border border-slate-200'
                     }`}
                   >
@@ -213,34 +233,34 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
 
       {/* Bannière d'initialisation si le Bin Amical est vide */}
       {games.length === 0 && tournaments.length === 0 && opponents.length === 0 && (
-        <div className="bg-emerald-50/70 border-2 border-emerald-200 rounded-2xl p-6 flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div className="space-y-1.5 max-w-2xl">
-            <h2 className="text-base font-extrabold text-emerald-950 flex items-center gap-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-600" />
-              Votre JSONBin Amical ({friendlyStatus.binId}) est prêt
+        <div className="bg-white border border-slate-300 rounded-lg p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
+          <div className="space-y-1 max-w-2xl">
+            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-slate-700" />
+              Base JSONBin Amicale ({friendlyStatus.binId}) prête
             </h2>
-            <p className="text-sm text-emerald-900/90">
-              Vous pouvez initialiser la structure de base sur ce JSONBin en un clic, charger un petit exemple de parties amicales, ou directement créer votre première session/partie amicale.
+            <p className="text-xs text-slate-600">
+              Vous pouvez initialiser une structure vide sur ce JSONBin, charger des données d’exemple, ou saisir directement une partie amicale libre.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
             <button
               type="button"
               onClick={onInitializeEmptyFriendlyBin}
               disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-950 bg-white hover:bg-emerald-100 border border-emerald-300 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
-              <Database className="w-4 h-4 text-emerald-700" />
-              Initialiser la structure vide dans le Bin
+              <Database className="w-3.5 h-3.5 text-slate-600" />
+              Initialiser Bin vide
             </button>
             <button
               type="button"
               onClick={onLoadSampleFriendlyData}
               disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
-              <Plus className="w-4 h-4" />
-              Charger un exemple amical
+              <Plus className="w-3.5 h-3.5" />
+              Charger un exemple
             </button>
           </div>
         </div>
@@ -248,185 +268,172 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
 
       {/* SOUS-ONGLET 1 : VUE D'ENSEMBLE AMICALE */}
       {subTab === 'overview' && (
-        <div className="space-y-6">
-          {/* Chiffres Clés Amicaux */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 font-mono tabular-nums">
-            <div className="p-4 bg-white border border-slate-200 border-l-4 border-l-emerald-600 rounded-xl">
-              <div className="text-xs font-sans font-bold text-slate-700">
-                Total Parties Amicales
+        <div className="space-y-5">
+          {/* Chiffres Clés Amicaux (Sans Elo Gagné) */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Total Parties
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {stats.total}
               </div>
-              <div className="text-[11px] font-sans font-medium text-slate-500 mt-1">
-                Hors classement FIDE
+              <div className="text-[11px] font-sans text-slate-500 mt-1">
+                Dont {stats.freeGamesCount} libre(s)
               </div>
             </div>
 
-            <div className="p-4 bg-emerald-50/70 border border-emerald-200 rounded-xl">
-              <div className="text-xs font-sans font-bold text-emerald-900">
-                Taux de Réussite
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Taux de Victoires
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-emerald-700 mt-1">
+              <div className="text-2xl font-bold text-emerald-700 mt-1">
                 {stats.winPct}%
               </div>
-              <div className="text-[11px] font-semibold text-emerald-800 mt-1">
+              <div className="text-[11px] font-semibold text-slate-600 mt-1">
                 +{stats.wins}V · ={stats.draws}N · -{stats.losses}D
               </div>
-              {stats.total > 0 && (
-                <div className="h-1.5 w-full bg-slate-200 rounded-full overflow-hidden flex mt-2">
-                  <div
-                    style={{ width: `${stats.winPct}%` }}
-                    className="bg-emerald-500 h-full"
-                  />
-                  <div
-                    style={{ width: `${stats.drawPct}%` }}
-                    className="bg-amber-400 h-full"
-                  />
-                  <div
-                    style={{ width: `${stats.lossPct}%` }}
-                    className="bg-rose-500 h-full"
-                  />
-                </div>
-              )}
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-xl">
-              <div className="text-xs font-sans font-bold text-slate-700">
-                Amis & Adversaires
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Joueurs Affrontés
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {opponents.length}
               </div>
-              <div className="text-[11px] font-sans font-medium text-slate-500 mt-1">
-                Base joueurs isolée
+              <div className="text-[11px] font-sans text-slate-500 mt-1">
+                Répertoire isolé
               </div>
             </div>
 
-            <div className="p-4 bg-indigo-50/70 border border-indigo-200 rounded-xl">
-              <div className="text-xs font-sans font-bold text-indigo-900">
-                Amical Classique
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Classique
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-indigo-700 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {stats.stdGames}
               </div>
-              <div className="text-[11px] font-sans font-medium text-indigo-800/80 mt-1">
-                Parties longues
+              <div className="text-[11px] font-sans text-slate-500 mt-1">
+                Sans impact Elo
               </div>
             </div>
 
-            <div className="p-4 bg-amber-50/70 border border-amber-200 rounded-xl">
-              <div className="text-xs font-sans font-bold text-amber-900">
-                Amical Rapide
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Rapide
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-amber-700 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {stats.rapidGames}
               </div>
-              <div className="text-[11px] font-sans font-medium text-amber-800/80 mt-1">
-                Cadence rapide
+              <div className="text-[11px] font-sans text-slate-500 mt-1">
+                Sans impact Elo
               </div>
             </div>
 
-            <div className="p-4 bg-sky-50/70 border border-sky-200 rounded-xl">
-              <div className="text-xs font-sans font-bold text-sky-900">
-                Amical Blitz
+            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
+              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                Blitz
               </div>
-              <div className="text-2xl sm:text-3xl font-extrabold text-sky-700 mt-1">
+              <div className="text-2xl font-bold text-slate-900 mt-1">
                 {stats.blitzGames}
               </div>
-              <div className="text-[11px] font-sans font-medium text-sky-800/80 mt-1">
-                Cadence blitz
+              <div className="text-[11px] font-sans text-slate-500 mt-1">
+                Sans impact Elo
               </div>
             </div>
           </div>
 
-          {/* Actions rapides */}
-          <div className="flex flex-wrap items-center gap-3">
-            <button
-              type="button"
-              onClick={() => setSubTab('tournaments')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Créer une session / un tournoi amical
-            </button>
-            <button
-              type="button"
-              onClick={() => setSubTab('games')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors cursor-pointer"
-            >
-              <Swords className="w-4 h-4 text-emerald-700" />
-              Ajouter ou voir les parties amicales ({games.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setSubTab('players')}
-              className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-bold text-slate-800 bg-white hover:bg-slate-50 border border-slate-300 rounded-xl transition-colors cursor-pointer"
-            >
-              <Users className="w-4 h-4 text-slate-700" />
-              Gérer mes amis / joueurs ({opponents.length})
-            </button>
-          </div>
-
-          {/* Grille : Sessions Amicales & Amis Affrontés */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            {/* Sessions / Tournois Amicaux */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 border-t-4 border-t-emerald-600 rounded-2xl overflow-hidden shadow-2xs">
-              <div className="px-6 py-4 border-b border-slate-200 bg-emerald-50/40 flex items-center justify-between">
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Trophy className="w-4 h-4 text-emerald-600" />
-                  Sessions & Tournois Amicaux ({tournaments.length})
+          {/* Grille : Dernières Parties Amicales (Libres ou Sessions) & Joueurs Affrontés */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            {/* Dernières Parties Amicales */}
+            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+              <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-slate-600" />
+                  Dernières Parties Amicales ({games.length})
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setSubTab('tournaments')}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-emerald-800 hover:underline cursor-pointer"
+                  onClick={() => {
+                    setSelectedTournamentFilter('');
+                    setSubTab('games');
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                 >
-                  Tout gérer
+                  Ajouter / Voir tout
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              {tournaments.length === 0 ? (
-                <div className="p-8 text-center text-sm text-slate-500">
-                  Aucune session ou tournoi amical enregistré.
+              {games.length === 0 ? (
+                <div className="p-8 text-center text-xs text-slate-500">
+                  Aucune partie amicale enregistrée.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-200 text-sm">
-                  {tournaments
+                <div className="divide-y divide-slate-200 text-xs">
+                  {games
                     .slice()
-                    .sort((a, b) => b.startDate.localeCompare(a.startDate))
-                    .slice(0, 5)
-                    .map((t) => {
-                      const tGames = games.filter((g) => g.tournamentId === t.id);
-                      const score = tGames.reduce(
-                        (acc, g) => acc + g.playerScore,
-                        0
+                    .sort((a, b) => b.datePlayed.localeCompare(a.datePlayed))
+                    .slice(0, 6)
+                    .map((g) => {
+                      const uncertain = Boolean(
+                        g.opponentNameUncertain ||
+                          hasQuestionMarkName(g.opponentName)
                       );
+                      const isFree =
+                        !g.tournamentId ||
+                        g.tournamentId === FREE_GAME_TOURNAMENT_ID;
                       return (
                         <div
-                          key={t.id}
+                          key={g.id}
                           onClick={() => {
-                            setSelectedTournamentFilter(t.id);
+                            setSelectedTournamentFilter(
+                              isFree ? FREE_GAME_TOURNAMENT_ID : g.tournamentId
+                            );
+                            setInspectedGame(g);
                             setSubTab('games');
                           }}
-                          className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors border-l-4 border-l-emerald-500"
+                          className="p-3.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
                         >
                           <div>
-                            <div className="font-bold text-slate-900">
-                              {t.name}
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>
+                                vs {formatPlayerNameLastFirst(g.opponentName)}
+                              </span>
+                              {uncertain && (
+                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
+                                  ?
+                                </span>
+                              )}
+                              <span className="font-mono text-slate-500 font-normal">
+                                (Elo : {g.opponentEloUnknown ? '?' : g.opponentElo})
+                              </span>
                             </div>
-                            <div className="text-xs text-slate-600 mt-0.5">
-                              {t.location} · {t.timeControlDetails}
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              {g.datePlayed} ·{' '}
+                              {isFree
+                                ? 'Partie libre (Hors tournoi)'
+                                : g.tournamentName}
                             </div>
                           </div>
-                          <div className="text-right font-mono shrink-0">
-                            <div className="font-bold text-emerald-800">
-                              Score {score} / {tGames.length}
-                            </div>
-                            <div className="text-xs text-slate-500">
-                              {tGames.length} partie(s)
-                            </div>
+                          <div className="flex items-center gap-2 shrink-0 font-mono">
+                            <span
+                              className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                                g.playerScore === 1
+                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  : g.playerScore === 0
+                                  ? 'bg-rose-50 text-rose-800 border-rose-200'
+                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                              }`}
+                            >
+                              {g.playerScore === 1
+                                ? 'Victoire'
+                                : g.playerScore === 0.5
+                                ? 'Nulle'
+                                : 'Défaite'}
+                            </span>
+                            <FileText className="w-3.5 h-3.5 text-slate-400" />
                           </div>
                         </div>
                       );
@@ -435,12 +442,12 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
               )}
             </div>
 
-            {/* Amis / Joueurs Amicaux */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 border-t-4 border-t-teal-600 rounded-2xl overflow-hidden shadow-2xs">
-              <div className="px-6 py-4 border-b border-slate-200 bg-teal-50/40 flex items-center justify-between">
-                <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-teal-700" />
-                  Amis & Joueurs Affrontés ({opponents.length})
+            {/* Joueurs Amicaux */}
+            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
+              <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                  <Users className="w-4 h-4 text-slate-600" />
+                  Joueurs Affrontés ({opponents.length})
                 </h3>
                 <button
                   type="button"
@@ -448,19 +455,19 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                     setSelectedOpponentId(null);
                     setSubTab('players');
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-teal-800 hover:underline cursor-pointer"
+                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                 >
-                  Voir tous
+                  Répertoire complet
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
               </div>
 
               {opponents.length === 0 ? (
-                <div className="p-8 text-center text-sm text-slate-500">
+                <div className="p-8 text-center text-xs text-slate-500">
                   Aucun joueur amical enregistré.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-200 text-sm">
+                <div className="divide-y divide-slate-200 text-xs">
                   {opponents.slice(0, 6).map((opp) => {
                     const oppGames = games.filter(
                       (g) =>
@@ -477,6 +484,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                       oppGames.length > 0
                         ? Math.round((wins / oppGames.length) * 100)
                         : 0;
+                    const uncertain = Boolean(
+                      opp.isNameUncertain || hasQuestionMarkName(opp.name)
+                    );
 
                     return (
                       <div
@@ -485,32 +495,38 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                           setSelectedOpponentId(opp.id);
                           setSubTab('players');
                         }}
-                        className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
+                        className="p-3.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
                       >
                         <div>
-                          <div className="font-bold text-slate-900 hover:text-emerald-700">
-                            {formatPlayerNameLastFirst(opp.name)}
+                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                            <span>{formatPlayerNameLastFirst(opp.name)}</span>
+                            {uncertain && (
+                              <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
+                                ?
+                              </span>
+                            )}
                           </div>
-                          <div className="text-xs font-mono text-slate-500 mt-0.5">
-                            Std {opp.standardElo || opp.elo} · Rap{' '}
-                            {opp.rapidElo || opp.elo} · Blz{' '}
-                            {opp.blitzElo || opp.elo}
+                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                            Std{' '}
+                            {opp.isStandardEloUnknown || opp.isEloUnknown
+                              ? '?'
+                              : opp.standardElo || opp.elo}{' '}
+                            · Rap{' '}
+                            {opp.isRapidEloUnknown || opp.isEloUnknown
+                              ? '?'
+                              : opp.rapidElo || opp.elo}{' '}
+                            · Blz{' '}
+                            {opp.isBlitzEloUnknown || opp.isEloUnknown
+                              ? '?'
+                              : opp.blitzElo || opp.elo}
                           </div>
                         </div>
                         <div className="text-right font-mono shrink-0">
-                          <div className="font-bold text-emerald-700">
+                          <div className="font-bold text-slate-900">
                             {winRate}% victoires
                           </div>
-                          <div className="text-xs text-slate-600">
-                            <span className="text-emerald-700 font-semibold">
-                              +{wins}
-                            </span>{' '}
-                            <span className="text-amber-700 font-semibold">
-                              ={draws}
-                            </span>{' '}
-                            <span className="text-rose-700 font-semibold">
-                              -{losses}
-                            </span>
+                          <div className="text-[11px] text-slate-500">
+                            +{wins}V · ={draws}N · -{losses}D
                           </div>
                         </div>
                       </div>
@@ -523,30 +539,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         </div>
       )}
 
-      {/* SOUS-ONGLET 2 : SESSIONS & TOURNOIS AMICAUX */}
-      {subTab === 'tournaments' && (
-        <TournamentsSection
-          tournaments={tournaments}
-          games={games}
-          opponents={opponents}
-          profile={profile}
-          onSaveTournament={onSaveTournament}
-          onDeleteTournament={onDeleteTournament}
-          onSaveGame={onSaveGame}
-          onDeleteGame={onDeleteGame}
-          onSelectOpponentProfile={(oppId) => {
-            setSelectedOpponentId(oppId);
-            setSubTab('players');
-          }}
-          onOpenGameInViewer={(game) => {
-            setSelectedTournamentFilter(game.tournamentId);
-            setInspectedGame(game);
-            setSubTab('games');
-          }}
-        />
-      )}
-
-      {/* SOUS-ONGLET 3 : PARTIES AMICALES */}
+      {/* SOUS-ONGLET 2 : PARTIES AMICALES (AVEC PARTIES LIBRES HORS TOURNOI & SANS ELO) */}
       {subTab === 'games' && (
         <GamesSection
           games={games}
@@ -564,10 +557,39 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
             setSubTab('players');
           }}
           onGoToTournaments={() => setSubTab('tournaments')}
+          isFriendlyMode={true}
         />
       )}
 
-      {/* SOUS-ONGLET 4 : JOUEURS & AMIS AFFRONTÉS */}
+      {/* SOUS-ONGLET 3 : SESSIONS & TOURNOIS AMICAUX (SANS GAIN D'ELO) */}
+      {subTab === 'tournaments' && (
+        <TournamentsSection
+          tournaments={tournaments}
+          games={games}
+          opponents={opponents}
+          profile={profile}
+          onSaveTournament={onSaveTournament}
+          onDeleteTournament={onDeleteTournament}
+          onSaveGame={onSaveGame}
+          onDeleteGame={onDeleteGame}
+          onSelectOpponentProfile={(oppId) => {
+            setSelectedOpponentId(oppId);
+            setSubTab('players');
+          }}
+          onOpenGameInViewer={(game) => {
+            setSelectedTournamentFilter(
+              !game.tournamentId || game.tournamentId === FREE_GAME_TOURNAMENT_ID
+                ? FREE_GAME_TOURNAMENT_ID
+                : game.tournamentId
+            );
+            setInspectedGame(game);
+            setSubTab('games');
+          }}
+          isFriendlyMode={true}
+        />
+      )}
+
+      {/* SOUS-ONGLET 4 : JOUEURS AFFRONTÉS EN AMICAL (SANS GAIN D'ELO) */}
       {subTab === 'players' && (
         <PlayersSection
           opponents={opponents}
@@ -577,10 +599,15 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
           onSaveOpponent={onSaveOpponent}
           onDeleteOpponent={onDeleteOpponent}
           onOpenGameInViewer={(game) => {
-            setSelectedTournamentFilter(game.tournamentId);
+            setSelectedTournamentFilter(
+              !game.tournamentId || game.tournamentId === FREE_GAME_TOURNAMENT_ID
+                ? FREE_GAME_TOURNAMENT_ID
+                : game.tournamentId
+            );
             setInspectedGame(game);
             setSubTab('games');
           }}
+          isFriendlyMode={true}
         />
       )}
     </div>
