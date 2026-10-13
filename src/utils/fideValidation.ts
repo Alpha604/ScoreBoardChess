@@ -465,9 +465,7 @@ export function sanitizeFideGamePayload(
     opponentFederation: oppFed,
     result: res,
     playerScore: score,
-    eloChange: opponentEloUnknown
-      ? 0
-      : Math.round(clampNumber(Number(input.eloChange), -150, 150, 0) * 10) / 10,
+    eloChange: Math.round(clampNumber(Number(input.eloChange || 0), -150, 150, 0) * 10) / 10,
     kFactorUsed: validK,
     ecoCode: sanitizeString((input.ecoCode || '').toUpperCase(), 6, ''),
     openingName: sanitizeString(input.openingName, 120, ''),

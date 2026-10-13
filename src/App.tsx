@@ -1588,83 +1588,88 @@ export default function App() {
 
                 {/* Les 6 Indicateurs Clés du Dashboard (Sobres et Professionnels) */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-gradient-to-br from-indigo-50/80 to-white border border-indigo-200/90 rounded-xl shadow-2xs hover:border-indigo-300 transition-all">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-indigo-700">
                       Elo Classique
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                    <div className="text-2xl font-bold text-indigo-950 mt-1">
                       {dashboardStats.currentStd}
                     </div>
-                    <div className="text-[11px] font-sans text-slate-500 mt-1">
-                      Objectif : {profile?.targetElo || 2000}
+                    <div className="text-[11px] font-sans text-indigo-600/80 font-medium mt-1">
+                      Cible : {profile?.targetElo || 2000}
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-gradient-to-br from-sky-50/80 to-white border border-sky-200/90 rounded-xl shadow-2xs hover:border-sky-300 transition-all">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-sky-700">
                       Elo Rapide
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                    <div className="text-2xl font-bold text-sky-950 mt-1">
                       {dashboardStats.currentRapid}
                     </div>
-                    <div className="text-[11px] font-sans text-slate-500 mt-1">
-                      Cadence rapide
+                    <div className="text-[11px] font-sans text-sky-600/80 font-medium mt-1">
+                      Cadence 10-25m
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-gradient-to-br from-amber-50/80 to-white border border-amber-200/90 rounded-xl shadow-2xs hover:border-amber-300 transition-all">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-amber-700">
                       Elo Blitz
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                    <div className="text-2xl font-bold text-amber-950 mt-1">
                       {dashboardStats.currentBlitz}
                     </div>
-                    <div className="text-[11px] font-sans text-slate-500 mt-1">
-                      Cadence blitz
+                    <div className="text-[11px] font-sans text-amber-600/80 font-medium mt-1">
+                      Cadence 3-5m
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-gradient-to-br from-emerald-50/80 to-white border border-emerald-200/90 rounded-xl shadow-2xs hover:border-emerald-300 transition-all">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-emerald-700">
                       Taux de Victoire
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                    <div className="text-2xl font-bold text-emerald-950 mt-1">
                       {dashboardStats.winPct}%
                     </div>
-                    <div className="text-[11px] font-semibold text-slate-600 mt-1">
-                      +{dashboardStats.wins}V · ={dashboardStats.draws}N · -
-                      {dashboardStats.losses}D
+                    <div className="text-[11px] font-sans font-semibold text-emerald-700 mt-1">
+                      +{dashboardStats.wins}V · ={dashboardStats.draws}N · -{dashboardStats.losses}D
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className="p-4 bg-gradient-to-br from-purple-50/80 to-white border border-purple-200/90 rounded-xl shadow-2xs hover:border-purple-300 transition-all">
+                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-purple-700">
                       Performance FIDE
                     </div>
-                    <div className="text-2xl font-bold text-slate-900 mt-1">
+                    <div className="text-2xl font-bold text-purple-950 mt-1">
                       {dashboardStats.globalPerf || '—'}
                     </div>
-                    <div className="text-[11px] font-sans text-slate-500 mt-1">
+                    <div className="text-[11px] font-sans text-purple-600/80 font-medium mt-1">
                       Sur {dashboardStats.totalGames} parties
                     </div>
                   </div>
 
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+                  <div className={`p-4 rounded-xl border shadow-2xs transition-all ${
+                    dashboardStats.netEloTotal >= 0
+                      ? 'bg-gradient-to-br from-teal-50/90 to-white border-teal-200/90'
+                      : 'bg-gradient-to-br from-rose-50/90 to-white border-rose-200/90'
+                  }`}>
+                    <div className={`text-[11px] font-sans font-bold uppercase tracking-wider ${
+                      dashboardStats.netEloTotal >= 0 ? 'text-teal-700' : 'text-rose-700'
+                    }`}>
                       Bilan Elo Net
                     </div>
                     <div
                       className={`text-2xl font-bold mt-1 ${
                         dashboardStats.netEloTotal >= 0
-                          ? 'text-emerald-700'
-                          : 'text-rose-700'
+                          ? 'text-teal-900'
+                          : 'text-rose-900'
                       }`}
                     >
                       {dashboardStats.netEloTotal >= 0
                         ? `+${dashboardStats.netEloTotal.toFixed(1)}`
                         : dashboardStats.netEloTotal.toFixed(1)}
                     </div>
-                    <div className="text-[11px] font-sans text-slate-500 mt-1">
+                    <div className="text-[11px] font-sans text-slate-500 font-medium mt-1">
                       Variation cumulée
                     </div>
                   </div>
