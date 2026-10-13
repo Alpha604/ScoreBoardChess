@@ -92,6 +92,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [cadenceFilter, setCadenceFilter] = useState<string>('ALL');
+  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+  const [selectedTournamentFilterId, setSelectedTournamentFilterId] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
 
   // Modale de détails complets d'un tournoi
   const [inspectedTournamentId, setInspectedTournamentId] = useState<string | null>(
@@ -127,8 +130,12 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const [totalPlayers, setTotalPlayers] = useState(120);
   const [finalStanding, setFinalStanding] = useState(15);
   const [status, setStatus] = useState<TournamentStatus>('completed');
+  const [isPaused, setIsPaused] = useState<boolean>(false);
+  const [pausedNotes, setPausedNotes] = useState<string>('');
+  const [pausedFields, setPausedFields] = useState<string[]>(['Rondes & Appariements']);
   const [normTarget, setNormTarget] = useState('');
   const [notes, setNotes] = useState('');
+  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
 
   // Rondes saisies directement lors de la création d'un tournoi
   const [draftGames, setDraftGames] = useState<DraftRoundGame[]>([]);
@@ -235,9 +242,26 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
 
   const filteredTournaments = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    return enrichedTournaments.filter((t) => {
+    const list = enrichedTournaments.filter((t) => {
+      if (selectedTournamentFilterId && t.id !== selectedTournamentFilterId) {
+        return false;
+      }
       if (cadenceFilter !== 'ALL' && t.timeControl !== cadenceFilter) {
         return false;
+      }
+      if (statusFilter !== 'ALL') {
+        if (statusFilter === 'paused' && !(t.status === 'paused' || t.isPaused)) {
+          return false;
+        }
+        if (statusFilter === 'upcoming' && (t.status !== 'upcoming' || t.isPaused)) {
+          return false;
+        }
+        if (statusFilter === 'ongoing' && t.status !== 'ongoing') {
+          return false;
+        }
+        if (statusFilter === 'completed' && t.status !== 'completed') {
+          return false;
+        }
       }
       if (!q) return true;
       return (
@@ -246,7 +270,15 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
         (t.normTarget || '').toLowerCase().includes(q)
       );
     });
-  }, [enrichedTournaments, searchQuery, cadenceFilter]);
+
+    return list.sort((a, b) => {
+      if (sortOrder === 'desc') {
+        return b.startDate.localeCompare(a.startDate);
+      } else {
+        return a.startDate.localeCompare(b.startDate);
+      }
+    });
+  }, [enrichedTournaments, searchQuery, cadenceFilter, statusFilter, selectedTournamentFilterId, sortOrder]);
 
   const inspectedTournament = useMemo(
     () =>
@@ -270,9 +302,13 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     setTotalPlayers(80);
     setFinalStanding(10);
     setStatus('completed');
+    setIsPaused(false);
+    setPausedNotes('');
+    setPausedFields(['Rondes & Appariements']);
     setNormTarget('');
     setNotes('');
     setDraftGames([]);
+    setModalStep(1);
     setIsModalOpen(true);
   };
 
@@ -290,11 +326,47 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     setTotalRounds(t.totalRounds);
     setTotalPlayers(t.totalPlayers || 60);
     setFinalStanding(t.finalRank || 1);
+    const paused = Boolean(t.isPaused || t.status === 'paused');
     setStatus(t.status || 'completed');
+    setIsPaused(paused);
+    setPausedNotes(t.pausedNotes || '');
+    setPausedFields(t.pausedFields || ['Rondes & Appariements']);
     setNormTarget(t.normTarget || '');
     setNotes(t.notes);
     setDraftGames([]);
+    setModalStep(1);
     setIsModalOpen(true);
+  };
+
+  const handleTogglePauseTournament = async (t: Tournament) => {
+    const nextPaused = !(t.isPaused || t.status === 'paused');
+    const nextStatus: TournamentStatus = nextPaused
+      ? 'paused'
+      : t.status === 'paused'
+      ? 'upcoming'
+      : t.status;
+    await onSaveTournament(
+      {
+        name: t.name,
+        location: t.location,
+        startDate: t.startDate,
+        endDate: t.endDate,
+        timeControl: t.timeControl,
+        timeControlDetails: t.timeControlDetails,
+        format: t.format,
+        totalRounds: t.totalRounds,
+        totalPlayers: t.totalPlayers,
+        finalRank: t.finalRank,
+        startingElo: t.startingElo,
+        status: nextStatus,
+        isPaused: nextPaused,
+        pausedNotes: nextPaused ? (t.pausedNotes || 'Tournoi et calendrier en pause') : '',
+        pausedFields: nextPaused ? (t.pausedFields || ['Rondes & Appariements']) : [],
+        normTarget: t.normTarget,
+        notes: t.notes,
+      },
+      t.id
+    );
   };
 
   const addDraftRound = () => {
@@ -479,7 +551,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
           totalPlayers: Number(totalPlayers) || 0,
           finalRank: Number(finalStanding) || 0,
           startingElo: playerElo,
-          status,
+          status: isPaused ? 'paused' : status,
+          isPaused,
+          pausedNotes: isPaused ? pausedNotes : '',
+          pausedFields: isPaused ? pausedFields : [],
           normTarget: normTarget.trim(),
           notes,
         },
@@ -584,43 +659,110 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
         </button>
       </div>
 
-      {/* Filtres de recherche et cadence */}
-      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Rechercher un tournoi par nom, ville..."
-            className="w-full pl-10 pr-4 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-slate-900"
-          />
+      {/* Filtres des tournois : Menu déroulant chronologique (du plus récent au plus vieux) et statut */}
+      <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center">
+          {/* Menu déroulant chronologique */}
+          <div className="md:col-span-5 relative">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Filtrer par tournoi (du plus récent au plus ancien)
+            </label>
+            <select
+              value={selectedTournamentFilterId}
+              onChange={(e) => setSelectedTournamentFilterId(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-900 cursor-pointer"
+            >
+              <option value="">
+                Tous les tournois ({enrichedTournaments.length}) — Affichage chronologique
+              </option>
+              {enrichedTournaments.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.startDate} · {t.name} ({t.location}) · {t.timeControl === 'Standard' ? 'Classique' : t.timeControl}
+                  {t.isPaused || t.status === 'paused' ? ' ⏸ [En pause]' : ''}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Recherche textuelle */}
+          <div className="md:col-span-4 relative">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Recherche libre
+            </label>
+            <div className="relative">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Nom, ville, objectif..."
+                className="w-full pl-8.5 pr-3 py-2 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-slate-900"
+              />
+            </div>
+          </div>
+
+          {/* Filtre par statut */}
+          <div className="md:col-span-3">
+            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+              Statut
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full px-3 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-900 cursor-pointer"
+            >
+              <option value="ALL">Tous les statuts</option>
+              <option value="paused">⏸ En pause ({enrichedTournaments.filter((t) => t.isPaused || t.status === 'paused').length})</option>
+              <option value="upcoming">À venir ({enrichedTournaments.filter((t) => t.status === 'upcoming' && !t.isPaused).length})</option>
+              <option value="ongoing">En cours ({enrichedTournaments.filter((t) => t.status === 'ongoing').length})</option>
+              <option value="completed">Terminés ({enrichedTournaments.filter((t) => t.status === 'completed' && !t.isPaused).length})</option>
+            </select>
+          </div>
         </div>
 
-        <div className="flex items-center gap-1.5 text-xs">
-          {(['ALL', 'Standard', 'Rapid', 'Blitz'] as const).map((cad) => {
-            const active = cadenceFilter === cad;
-            return (
-              <button
-                key={cad}
-                type="button"
-                onClick={() => setCadenceFilter(cad)}
-                className={`px-3 py-1.5 rounded-md font-semibold border transition-colors cursor-pointer ${
-                  active
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                {cad === 'ALL'
-                  ? 'Toutes cadences'
-                  : cad === 'Standard'
-                  ? 'Classique'
-                  : cad === 'Rapid'
-                  ? 'Rapide'
-                  : 'Blitz'}
-              </button>
-            );
-          })}
+        {/* Ligne cadences et réinitialisation */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold text-slate-500 mr-1">Cadence :</span>
+            {(['ALL', 'Standard', 'Rapid', 'Blitz'] as const).map((cad) => {
+              const active = cadenceFilter === cad;
+              return (
+                <button
+                  key={cad}
+                  type="button"
+                  onClick={() => setCadenceFilter(cad)}
+                  className={`px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-slate-900 text-white border-slate-900'
+                      : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {cad === 'ALL'
+                    ? 'Toutes'
+                    : cad === 'Standard'
+                    ? 'Classique'
+                    : cad === 'Rapid'
+                    ? 'Rapide'
+                    : 'Blitz'}
+                </button>
+              );
+            })}
+          </div>
+
+          {(selectedTournamentFilterId || statusFilter !== 'ALL' || cadenceFilter !== 'ALL' || searchQuery) && (
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedTournamentFilterId('');
+                setStatusFilter('ALL');
+                setCadenceFilter('ALL');
+                setSearchQuery('');
+              }}
+              className="text-xs font-semibold text-slate-600 hover:text-rose-600 hover:underline cursor-pointer"
+            >
+              Réinitialiser tous les filtres
+            </button>
+          )}
         </div>
       </div>
 
@@ -1330,7 +1472,8 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
       {/* Modal Créer / Modifier un Tournoi */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-lg max-w-4xl w-full p-6 space-y-6 my-8 max-h-[92vh] overflow-y-auto shadow-xl">
+          <div className="bg-white border border-slate-200 rounded-lg max-w-4xl w-full p-6 space-y-5 my-8 max-h-[92vh] overflow-y-auto shadow-xl">
+            {/* En-tête du modal avec stepper */}
             <div className="flex items-center justify-between border-b border-slate-200 pb-4">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
@@ -1341,7 +1484,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                     : 'Enregistrer un nouveau tournoi'}
                 </h2>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Renseignez les informations générales et ajoutez vos rondes si vous le souhaitez.
+                  Assistant en 4 étapes · Renseignez les informations pas à pas
                 </p>
               </div>
               <button
@@ -1353,201 +1496,447 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
               </button>
             </div>
 
+            {/* Stepper à 4 étapes */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalStep(1)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 1
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : modalStep > 1
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 1
+                </div>
+                <div className="text-xs font-bold truncate">Cadre & Cadence</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalStep(2)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 2
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : modalStep > 2
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 2
+                </div>
+                <div className="text-xs font-bold truncate">Statut & Pause</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalStep(3)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 3
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : modalStep > 3
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 3
+                </div>
+                <div className="text-xs font-bold truncate">
+                  Rondes ({draftGames.length})
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setModalStep(4)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 4
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 4
+                </div>
+                <div className="text-xs font-bold truncate">Confirmation</div>
+              </button>
+            </div>
+
             <form onSubmit={handleSubmitTournament} className="space-y-6 text-xs">
-              {/* 1. Infos générales du tournoi */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Nom du tournoi / de la session *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: Open International d'Échecs de Cappelle-la-Grande"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md font-semibold"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Lieu / Ville *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={location}
-                    onChange={(e) => setLocation(e.target.value)}
-                    placeholder="Ex: Lille, FRA"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Cadence *
-                  </label>
-                  <select
-                    value={timeControl}
-                    onChange={(e) => {
-                      const tc = e.target.value as TimeControlCategory;
-                      setTimeControl(tc);
-                      if (tc === 'Standard') setTimeControlDetails('90m + 30s/coup');
-                      if (tc === 'Rapid') setTimeControlDetails('15m + 5s/coup');
-                      if (tc === 'Blitz') setTimeControlDetails('3m + 2s/coup');
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-semibold"
-                  >
-                    <option value="Standard">Classique (Standard)</option>
-                    <option value="Rapid">Rapide</option>
-                    <option value="Blitz">Blitz</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Détails de la cadence
-                  </label>
-                  <input
-                    type="text"
-                    value={timeControlDetails}
-                    onChange={(e) => setTimeControlDetails(e.target.value)}
-                    placeholder="90m + 30s/coup"
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Format
-                  </label>
-                  <select
-                    value={format}
-                    onChange={(e) => setFormat(e.target.value as TournamentFormat)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white"
-                  >
-                    <option value="Swiss">Système Suisse</option>
-                    <option value="Round Robin">Toutes rondes</option>
-                    <option value="Team">Interclubs / Équipes</option>
-                    <option value="Knockout">Coupe / KO</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Date de début
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Date de fin
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Nombre de rondes
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={30}
-                    value={totalRounds}
-                    onChange={(e) => setTotalRounds(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Nombre total de joueurs
-                  </label>
-                  <input
-                    type="number"
-                    min={2}
-                    value={totalPlayers}
-                    onChange={(e) => setTotalPlayers(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Mon classement final (Place)
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    value={finalStanding}
-                    onChange={(e) => setFinalStanding(Number(e.target.value))}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Objectif du tournoi
-                  </label>
-                  <input
-                    type="text"
-                    value={normTarget}
-                    onChange={(e) => setNormTarget(e.target.value)}
-                    placeholder="Ex: Podium, Top 10..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Notes / Bilan personnel
-                  </label>
-                  <input
-                    type="text"
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Ex: Bonne préparation d'ouverture..."
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  />
-                </div>
-              </div>
-
-              {/* 2. Ajouter les parties du tournoi */}
-              {!editingId && (
-                <div className="space-y-4 pt-4 border-t border-slate-200">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                        Parties jouées dans ce tournoi ({draftGames.length})
-                      </h3>
-                      <p className="text-xs text-slate-500">
-                        Cochez « ? » si vous n’êtes pas sûr du nom de l’adversaire ou de son Elo.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={addDraftRound}
-                      className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-900 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Ajouter une ronde
-                    </button>
+              {/* ÉTAPE 1 : INFOS GÉNÉRALES & CADENCE */}
+              {modalStep === 1 && (
+                <div className="space-y-4">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 text-xs">
+                    Indiquez le nom officiel, la ville d'accueil et le format du tournoi.
                   </div>
 
-                  {draftGames.length > 0 && (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Nom du tournoi / de la session *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="Ex: Open International de parties classiques"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md font-semibold"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Lieu / Ville *
+                      </label>
+                      <input
+                        type="text"
+                        required
+                        value={location}
+                        onChange={(e) => setLocation(e.target.value)}
+                        placeholder="Ex: Paris, FRA"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Cadence de jeu *
+                      </label>
+                      <select
+                        value={timeControl}
+                        onChange={(e) => {
+                          const tc = e.target.value as TimeControlCategory;
+                          setTimeControl(tc);
+                          if (tc === 'Standard') setTimeControlDetails('90m + 30s/coup');
+                          if (tc === 'Rapid') setTimeControlDetails('15m + 5s/coup');
+                          if (tc === 'Blitz') setTimeControlDetails('3m + 2s/coup');
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-semibold"
+                      >
+                        <option value="Standard">Classique (Standard)</option>
+                        <option value="Rapid">Rapide</option>
+                        <option value="Blitz">Blitz</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Précision de cadence
+                      </label>
+                      <input
+                        type="text"
+                        value={timeControlDetails}
+                        onChange={(e) => setTimeControlDetails(e.target.value)}
+                        placeholder="90m + 30s/coup"
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Format
+                      </label>
+                      <select
+                        value={format}
+                        onChange={(e) => setFormat(e.target.value as TournamentFormat)}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-semibold"
+                      >
+                        <option value="Swiss">Système Suisse</option>
+                        <option value="Round Robin">Toutes rondes (Toutes rondes)</option>
+                        <option value="Team">Interclubs / Match par équipes</option>
+                        <option value="Knockout">Coupe / Élimination directe</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Date de début
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Date de fin
+                      </label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Nombre de rondes prévues
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={30}
+                        value={totalRounds}
+                        onChange={(e) => setTotalRounds(Number(e.target.value))}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ÉTAPE 2 : STATUT, GESTION DE LA PAUSE & OBJECTIFS */}
+              {modalStep === 2 && (
+                <div className="space-y-5">
+                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-slate-600 text-xs">
+                    Définissez le statut du tournoi. Si le tournoi n'a pas encore commencé, vous pouvez mettre des éléments en <strong>pause</strong>.
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Statut général du tournoi
+                      </label>
+                      <select
+                        value={status}
+                        onChange={(e) => {
+                          const nextSt = e.target.value as TournamentStatus;
+                          setStatus(nextSt);
+                          if (nextSt === 'paused') {
+                            setIsPaused(true);
+                          } else if (nextSt === 'ongoing' || nextSt === 'completed') {
+                            setIsPaused(false);
+                          }
+                        }}
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md bg-white font-semibold"
+                      >
+                        <option value="upcoming">À venir (non débuté)</option>
+                        <option value="paused">⏸ En pause (en attente d'éléments)</option>
+                        <option value="ongoing">En cours</option>
+                        <option value="completed">Terminé</option>
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Nombre total estimé de participants
+                      </label>
+                      <input
+                        type="number"
+                        min={2}
+                        value={totalPlayers}
+                        onChange={(e) => setTotalPlayers(Number(e.target.value))}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Bloc spécial : Mise en Pause pour tournoi non commencé */}
+                  <div className={`p-4 rounded-lg border transition-all ${
+                    isPaused || status === 'paused' || status === 'upcoming'
+                      ? 'bg-amber-50/70 border-amber-300 text-amber-950'
+                      : 'bg-slate-50 border-slate-200 text-slate-700'
+                  }`}>
+                    <div className="flex items-center justify-between gap-3 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-base">⏸</span>
+                        <span className="font-bold text-xs uppercase tracking-wider">
+                          Mettre certaines infos en « Pause » (Tournoi non commencé / Standby)
+                        </span>
+                      </div>
+                      <label className="inline-flex items-center gap-2 font-bold cursor-pointer text-xs">
+                        <input
+                          type="checkbox"
+                          checked={isPaused}
+                          onChange={(e) => {
+                            const val = e.target.checked;
+                            setIsPaused(val);
+                            if (val && status !== 'paused') {
+                              setStatus('paused');
+                            } else if (!val && status === 'paused') {
+                              setStatus('upcoming');
+                            }
+                          }}
+                          className="rounded border-slate-400 text-amber-600 focus:ring-amber-500"
+                        />
+                        <span>{isPaused ? 'Mise en pause active' : 'Activer la pause'}</span>
+                      </label>
+                    </div>
+
+                    <p className="text-[11px] opacity-80 mb-3">
+                      Permet de figer ou suspendre la saisie des appariements, des horaires ou de la liste des inscrits tant que le tournoi n'a pas débuté.
+                    </p>
+
+                    {isPaused && (
+                      <div className="space-y-3 pt-3 border-t border-amber-200/60">
+                        <div>
+                          <label className="block text-[11px] font-bold mb-1">
+                            Éléments suspendus / en attente de confirmation :
+                          </label>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {[
+                              'Rondes & Appariements officiels',
+                              'Horaires et salle de jeu',
+                              'Grille de départ / Elo des inscrits',
+                              'Confirmation de participation',
+                            ].map((field) => {
+                              const checked = pausedFields.includes(field);
+                              return (
+                                <label
+                                  key={field}
+                                  className={`flex items-center gap-2 p-2 rounded border text-xs cursor-pointer ${
+                                    checked
+                                      ? 'bg-amber-100/80 border-amber-400 font-bold'
+                                      : 'bg-white/80 border-slate-200 text-slate-600'
+                                  }`}
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      if (e.target.checked) {
+                                        setPausedFields([...pausedFields, field]);
+                                      } else {
+                                        setPausedFields(
+                                          pausedFields.filter((f) => f !== field)
+                                        );
+                                      }
+                                    }}
+                                    className="rounded border-slate-300"
+                                  />
+                                  <span>{field}</span>
+                                </label>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div>
+                          <label className="block text-[11px] font-bold mb-1">
+                            Motif ou note de mise en pause :
+                          </label>
+                          <input
+                            type="text"
+                            value={pausedNotes}
+                            onChange={(e) => setPausedNotes(e.target.value)}
+                            placeholder="Ex: En attente de la parution des appariements ronde 1..."
+                            className="w-full px-3 py-2 bg-white border border-amber-300 rounded-md text-xs"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Objectifs & Bilans */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Objectif du tournoi (Norme, podium, objectif points)
+                      </label>
+                      <input
+                        type="text"
+                        value={normTarget}
+                        onChange={(e) => setNormTarget(e.target.value)}
+                        placeholder="Ex: Viser 5/7 ou Top 10"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Classement final obtenu ou visé (Place)
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        value={finalStanding}
+                        onChange={(e) => setFinalStanding(Number(e.target.value))}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
+                      />
+                    </div>
+
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-slate-700 mb-1">
+                        Notes et préparation
+                      </label>
+                      <input
+                        type="text"
+                        value={notes}
+                        onChange={(e) => setNotes(e.target.value)}
+                        placeholder="Ex: Préparation d'ouvertures sur la Caro-Kann, tournoi avec hébergement..."
+                        className="w-full px-3 py-2 border border-slate-300 rounded-md"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ÉTAPE 3 : RONDES & PARTIES DU TOURNOI */}
+              {modalStep === 3 && (
+                <div className="space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div>
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                        {editingId
+                          ? 'Rondes du tournoi'
+                          : `Rondes à enregistrer (${draftGames.length})`}
+                      </h3>
+                      <p className="text-xs text-slate-500">
+                        {editingId
+                          ? 'Les parties de ce tournoi peuvent aussi être modifiées directement dans sa fiche.'
+                          : 'Ajoutez les parties jouées avec le résultat (1 Victoire, 2 Nulle, 3 Défaite).'}
+                      </p>
+                    </div>
+
+                    {!editingId && (
+                      <button
+                        type="button"
+                        onClick={addDraftRound}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Ajouter une ronde
+                      </button>
+                    )}
+                  </div>
+
+                  {editingId ? (
+                    <div className="p-6 bg-white border border-slate-200 rounded-lg text-center space-y-2">
+                      <p className="text-xs font-bold text-slate-800">
+                        Tournoi en cours de modification
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Vous pouvez continuer vers l'étape de confirmation pour sauvegarder les paramètres du tournoi.
+                      </p>
+                    </div>
+                  ) : draftGames.length === 0 ? (
+                    <div className="p-8 bg-white border border-dashed border-slate-300 rounded-lg text-center space-y-3">
+                      <p className="text-xs font-bold text-slate-700">
+                        Aucune ronde ajoutée pour l'instant.
+                      </p>
+                      <p className="text-xs text-slate-500">
+                        Vous pouvez enregistrer le tournoi vierge maintenant et ajouter les rondes au fur et à mesure du tournoi.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={addDraftRound}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-900 bg-slate-100 border border-slate-300 rounded-md hover:bg-slate-200 cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Ajouter la 1re ronde
+                      </button>
+                    </div>
+                  ) : (
                     <div className="space-y-4">
                       {draftGames.map((dg) => (
                         <div
@@ -1571,7 +1960,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                             <div className="lg:col-span-2">
                               <label className="block text-[11px] font-bold text-slate-700 mb-1 flex items-center gap-1">
                                 <UserCheck className="w-3.5 h-3.5 text-slate-600" />
-                                Choisir un joueur existant (A-Z)
+                                Choisir un adversaire connu (A-Z)
                               </label>
                               <select
                                 value={dg.opponentId}
@@ -1584,7 +1973,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-900"
                               >
                                 <option value="">
-                                  -- Nouveau joueur (saisir) --
+                                  -- Nouveau joueur (saisir manuellement) --
                                 </option>
                                 {sortedOpponents.map((opp) => (
                                   <option key={opp.id} value={opp.id}>
@@ -1626,44 +2015,6 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                 }
                                 placeholder="NOM, Prénom"
                                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                                ID FIDE
-                              </label>
-                              <input
-                                type="text"
-                                value={dg.opponentFideId}
-                                onChange={(e) =>
-                                  handleFideOrFfeLookupInDraft(
-                                    dg.tempId,
-                                    'fideId',
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Ex: 65104823"
-                                className="w-full px-2.5 py-1.5 font-mono bg-white border border-slate-300 rounded-md"
-                              />
-                            </div>
-
-                            <div>
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                                ID FFE
-                              </label>
-                              <input
-                                type="text"
-                                value={dg.opponentFfeId}
-                                onChange={(e) =>
-                                  handleFideOrFfeLookupInDraft(
-                                    dg.tempId,
-                                    'ffeId',
-                                    e.target.value
-                                  )
-                                }
-                                placeholder="Ex: K59412"
-                                className="w-full px-2.5 py-1.5 font-mono uppercase bg-white border border-slate-300 rounded-md"
                               />
                             </div>
 
@@ -1715,7 +2066,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                     playerColor: e.target.value as PlayerColor,
                                   })
                                 }
-                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md"
+                                className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
                               >
                                 <option value="White">Blancs</option>
                                 <option value="Black">Noirs</option>
@@ -1723,9 +2074,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                             </div>
 
                             {/* Score par rapport à moi : 3 boutons */}
-                            <div className="lg:col-span-2">
+                            <div className="lg:col-span-3">
                               <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                                Mon Résultat
+                                Mon Résultat (par rapport à moi)
                               </label>
                               <div className="grid grid-cols-3 gap-1.5">
                                 <button
@@ -1738,7 +2089,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                   className={`py-1.5 px-2 rounded-md font-bold text-[11px] border cursor-pointer ${
                                     dg.playerScore === 1
                                       ? 'bg-emerald-700 text-white border-emerald-700'
-                                      : 'bg-white text-emerald-800 border-emerald-300'
+                                      : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'
                                   }`}
                                 >
                                   1 · Victoire
@@ -1753,7 +2104,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                   className={`py-1.5 px-2 rounded-md font-bold text-[11px] border cursor-pointer ${
                                     dg.playerScore === 0.5
                                       ? 'bg-amber-600 text-white border-amber-600'
-                                      : 'bg-white text-amber-800 border-amber-300'
+                                      : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
                                   }`}
                                 >
                                   2 · Nulle
@@ -1768,7 +2119,7 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                   className={`py-1.5 px-2 rounded-md font-bold text-[11px] border cursor-pointer ${
                                     dg.playerScore === 0
                                       ? 'bg-rose-700 text-white border-rose-700'
-                                      : 'bg-white text-rose-800 border-rose-300'
+                                      : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
                                   }`}
                                 >
                                   3 · Défaite
@@ -1776,9 +2127,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                               </div>
                             </div>
 
-                            <div className="lg:col-span-2">
+                            <div className="lg:col-span-3">
                               <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                                Lien d’analyse Chess.com (facultatif)
+                                Lien Chess.com / Note
                               </label>
                               <input
                                 type="url"
@@ -1792,23 +2143,6 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                 className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md"
                               />
                             </div>
-
-                            <div className="lg:col-span-6">
-                              <label className="block text-[11px] font-bold text-slate-600 mb-1">
-                                PGN de la partie (facultatif — copier/coller)
-                              </label>
-                              <textarea
-                                rows={2}
-                                value={dg.pgn}
-                                onChange={(e) =>
-                                  updateDraftRound(dg.tempId, {
-                                    pgn: e.target.value,
-                                  })
-                                }
-                                placeholder="1. d4 Nf6 2. c4 e6..."
-                                className="w-full px-2.5 py-1.5 font-mono bg-white border border-slate-300 rounded-md"
-                              />
-                            </div>
                           </div>
                         </div>
                       ))}
@@ -1817,25 +2151,119 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting
-                    ? 'Enregistrement...'
-                    : editingId
-                    ? 'Enregistrer les modifications'
-                    : 'Enregistrer'}
-                </button>
+              {/* ÉTAPE 4 : RÉCAPITULATIF & CONFIRMATION */}
+              {modalStep === 4 && (
+                <div className="space-y-4">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
+                      Récapitulatif avant enregistrement
+                    </h3>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div>
+                        <span className="text-slate-500">Nom :</span>{' '}
+                        <strong className="text-slate-900">{name || 'Sans titre'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Lieu :</span>{' '}
+                        <strong className="text-slate-900">{location || 'Non précisé'}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Cadence :</span>{' '}
+                        <strong className="text-slate-900">{timeControl} ({timeControlDetails})</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Format :</span>{' '}
+                        <strong className="text-slate-900">{format}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Dates :</span>{' '}
+                        <strong className="text-slate-900">{startDate} → {endDate}</strong>
+                      </div>
+                      <div>
+                        <span className="text-slate-500">Statut :</span>{' '}
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[11px] font-bold ${
+                          isPaused || status === 'paused'
+                            ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                            : status === 'upcoming'
+                            ? 'bg-blue-50 text-blue-900 border border-blue-300'
+                            : status === 'ongoing'
+                            ? 'bg-purple-50 text-purple-900 border border-purple-300'
+                            : 'bg-emerald-50 text-emerald-900 border border-emerald-300'
+                        }`}>
+                          {isPaused || status === 'paused'
+                            ? '⏸ En pause'
+                            : status === 'upcoming'
+                            ? 'À venir'
+                            : status === 'ongoing'
+                            ? 'En cours'
+                            : 'Terminé'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {(isPaused || status === 'paused') && (
+                      <div className="p-3 bg-amber-50 border border-amber-300 rounded-md text-xs text-amber-950 space-y-1">
+                        <div className="font-bold">⏸ Détails de la pause :</div>
+                        <div>Éléments suspendus : {pausedFields.join(', ') || 'Tournoi global'}</div>
+                        {pausedNotes && <div>Motif : « {pausedNotes} »</div>}
+                      </div>
+                    )}
+
+                    {!editingId && (
+                      <div className="text-xs text-slate-600">
+                        Rondes associées à créer : <strong>{draftGames.length}</strong>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Pied du modal avec navigation Suivant / Précédent et validation */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
+                <div>
+                  {modalStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setModalStep((prev) => (prev > 1 ? ((prev - 1) as any) : 1))}
+                      className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
+                    >
+                      ← Étape précédente
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsModalOpen(false)}
+                    className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-md cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+
+                  {modalStep < 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => setModalStep((prev) => (prev < 4 ? ((prev + 1) as any) : 4))}
+                      className="px-4 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md cursor-pointer"
+                    >
+                      Étape suivante →
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md disabled:opacity-50 cursor-pointer shadow-xs"
+                    >
+                      {isSubmitting
+                        ? 'Enregistrement...'
+                        : editingId
+                        ? 'Confirmer les modifications'
+                        : 'Confirmer et enregistrer le tournoi'}
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>

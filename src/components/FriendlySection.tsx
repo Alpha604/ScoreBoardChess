@@ -1,6 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowUpRight,
+  ChevronDown,
+  ChevronUp,
   Database,
   FileText,
   LayoutDashboard,
@@ -10,6 +12,7 @@ import {
   Swords,
   Trophy,
   Users,
+  Zap,
 } from 'lucide-react';
 import {
   BinSyncStatus,
@@ -18,7 +21,9 @@ import {
 import {
   FideGame,
   OpponentPlayer,
+  PlayerColor,
   PlayerProfile,
+  TimeControlCategory,
   Tournament,
 } from '../types/fide';
 import {
@@ -120,6 +125,96 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
     };
   }, [games]);
 
+  // Statistiques détaillées par cadence (sans Elo)
+  const cadenceBreakdown = useMemo(() => {
+    const getSubStats = (tc: TimeControlCategory) => {
+      const list = games.filter((g) => g.timeControl === tc);
+      const total = list.length;
+      const wins = list.filter((g) => g.playerScore === 1).length;
+      const draws = list.filter((g) => g.playerScore === 0.5).length;
+      const losses = list.filter((g) => g.playerScore === 0).length;
+      const winRate = total > 0 ? Math.round((wins / total) * 100) : 0;
+      return { total, wins, draws, losses, winRate };
+    };
+    return {
+      standard: getSubStats('Standard'),
+      rapid: getSubStats('Rapid'),
+      blitz: getSubStats('Blitz'),
+    };
+  }, [games]);
+
+  // Saisie express de partie amicale (enregistrement rapide sans quitter la page)
+  const [isQuickLoggerOpen, setIsQuickLoggerOpen] = useState(false);
+  const [quickOpponentName, setQuickOpponentName] = useState('');
+  const [quickOpponentUncertain, setQuickOpponentUncertain] = useState(false);
+  const [quickScore, setQuickScore] = useState<0 | 0.5 | 1>(1);
+  const [quickColor, setQuickColor] = useState<PlayerColor>('White');
+  const [quickCadence, setQuickCadence] = useState<TimeControlCategory>('Blitz');
+  const [quickDate, setQuickDate] = useState(new Date().toISOString().slice(0, 10));
+  const [quickTournamentId, setQuickTournamentId] = useState(FREE_GAME_TOURNAMENT_ID);
+  const [quickChessComUrl, setQuickChessComUrl] = useState('');
+  const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+
+  const handleQuickSaveFriendlyGame = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickOpponentName.trim()) return;
+    setIsQuickSubmitting(true);
+    try {
+      const oppName = formatPlayerNameLastFirst(quickOpponentName);
+      const uncertain = quickOpponentUncertain || hasQuestionMarkName(oppName);
+      const result =
+        quickScore === 1
+          ? quickColor === 'White'
+            ? '1-0'
+            : '0-1'
+          : quickScore === 0
+          ? quickColor === 'White'
+            ? '0-1'
+            : '1-0'
+          : '1/2-1/2';
+
+      const selectedTourn = tournaments.find((t) => t.id === quickTournamentId);
+      const tId = quickTournamentId || FREE_GAME_TOURNAMENT_ID;
+      const tName = selectedTourn ? selectedTourn.name : 'Partie Libre (Hors tournoi)';
+
+      await onSaveGame({
+        tournamentId: tId,
+        tournamentName: tName,
+        round: 1,
+        datePlayed: quickDate,
+        timeControl: quickCadence,
+        playerColor: quickColor,
+        playerElo: profile.standardElo,
+        opponentName: oppName,
+        opponentNameUncertain: uncertain,
+        opponentFideId: '',
+        opponentFfeId: '',
+        opponentElo: 0,
+        opponentEloUnknown: true,
+        opponentTitle: 'None',
+        opponentFederation: 'FRA',
+        result,
+        playerScore: quickScore,
+        termination: 'Agreement',
+        kFactorUsed: 20,
+        eloChange: 0,
+        ecoCode: 'B00',
+        openingName: 'Partie amicale',
+        movesCount: 25,
+        chessComUrl: quickChessComUrl.trim() || undefined,
+        pgn: '',
+        keyMomentNote: 'Partie amicale d\'entraînement',
+      });
+
+      setQuickOpponentName('');
+      setQuickOpponentUncertain(false);
+      setQuickChessComUrl('');
+      setIsQuickLoggerOpen(false);
+    } finally {
+      setIsQuickSubmitting(false);
+    }
+  };
+
   const subNavItems: {
     id: FriendlySubTab;
     label: string;
@@ -167,6 +262,14 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <button
               type="button"
+              onClick={() => setIsQuickLoggerOpen((prev) => !prev)}
+              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-md transition-colors cursor-pointer"
+            >
+              <Zap className="w-4 h-4 text-amber-700" />
+              {isQuickLoggerOpen ? 'Masquer saisie express' : '⚡ Saisie express (1 clic)'}
+            </button>
+            <button
+              type="button"
               onClick={() => {
                 setSelectedTournamentFilter(FREE_GAME_TOURNAMENT_ID);
                 setSubTab('games');
@@ -192,6 +295,196 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Formulaire de saisie express de partie amicale */}
+        {isQuickLoggerOpen && (
+          <form
+            onSubmit={handleQuickSaveFriendlyGame}
+            className="p-4 bg-amber-50/80 border border-amber-300 rounded-lg space-y-3 pt-3"
+          >
+            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+              <div className="flex items-center gap-2">
+                <Zap className="w-4 h-4 text-amber-700" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-950">
+                  Enregistrement Express d'une Partie Amicale (Sans impact Elo)
+                </h3>
+              </div>
+              <span className="text-[11px] text-amber-800 font-mono">
+                Sauvegarde directe dans le Bin Amical
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 text-xs">
+              {/* Choix adversaire ou saisie */}
+              <div className="lg:col-span-4">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="font-bold text-slate-800">
+                    Adversaire (NOM, Prénom) *
+                  </label>
+                  <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-900 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={quickOpponentUncertain}
+                      onChange={(e) => setQuickOpponentUncertain(e.target.checked)}
+                      className="rounded border-amber-400"
+                    />
+                    Incertain (?)
+                  </label>
+                </div>
+                <div className="space-y-1.5">
+                  {opponents.length > 0 && (
+                    <select
+                      onChange={(e) => {
+                        if (e.target.value) {
+                          const matched = opponents.find((o) => o.id === e.target.value);
+                          if (matched) {
+                            setQuickOpponentName(matched.name);
+                            setQuickOpponentUncertain(Boolean(matched.isNameUncertain));
+                          }
+                        }
+                      }}
+                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-800"
+                    >
+                      <option value="">-- Choisir un joueur déjà affronté --</option>
+                      {opponents.slice().sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {formatPlayerNameDisplay(o.name, o.isNameUncertain)}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    type="text"
+                    required
+                    value={quickOpponentName}
+                    onChange={(e) => setQuickOpponentName(e.target.value)}
+                    placeholder="Ex: DUPONT, Jean"
+                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-900"
+                  />
+                </div>
+              </div>
+
+              {/* Résultat par rapport à moi : 3 boutons */}
+              <div className="lg:col-span-3">
+                <label className="block font-bold text-slate-800 mb-1">
+                  Mon Résultat
+                </label>
+                <div className="grid grid-cols-3 gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setQuickScore(1)}
+                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                      quickScore === 1
+                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
+                        : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'
+                    }`}
+                  >
+                    Victoire
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickScore(0.5)}
+                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                      quickScore === 0.5
+                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
+                        : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
+                    }`}
+                  >
+                    Nulle
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setQuickScore(0)}
+                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                      quickScore === 0
+                        ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
+                        : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
+                    }`}
+                  >
+                    Défaite
+                  </button>
+                </div>
+              </div>
+
+              {/* Couleur */}
+              <div className="lg:col-span-2">
+                <label className="block font-bold text-slate-800 mb-1">
+                  Ma couleur
+                </label>
+                <select
+                  value={quickColor}
+                  onChange={(e) => setQuickColor(e.target.value as PlayerColor)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                >
+                  <option value="White">Blancs</option>
+                  <option value="Black">Noirs</option>
+                </select>
+              </div>
+
+              {/* Cadence */}
+              <div className="lg:col-span-3">
+                <label className="block font-bold text-slate-800 mb-1">
+                  Cadence
+                </label>
+                <select
+                  value={quickCadence}
+                  onChange={(e) => setQuickCadence(e.target.value as TimeControlCategory)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                >
+                  <option value="Blitz">Blitz (3m, 5m...)</option>
+                  <option value="Rapid">Rapide (10m, 15m...)</option>
+                  <option value="Standard">Classique</option>
+                </select>
+              </div>
+
+              {/* Session / Libre */}
+              <div className="lg:col-span-4">
+                <label className="block font-bold text-slate-800 mb-1">
+                  Cadre / Session
+                </label>
+                <select
+                  value={quickTournamentId}
+                  onChange={(e) => setQuickTournamentId(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                >
+                  <option value={FREE_GAME_TOURNAMENT_ID}>
+                    Partie Libre (Hors tournoi / Soirée club)
+                  </option>
+                  {tournaments.map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name} ({t.startDate})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date */}
+              <div className="lg:col-span-3">
+                <label className="block font-bold text-slate-800 mb-1">
+                  Date
+                </label>
+                <input
+                  type="date"
+                  value={quickDate}
+                  onChange={(e) => setQuickDate(e.target.value)}
+                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-mono"
+                />
+              </div>
+
+              {/* Bouton de validation rapide */}
+              <div className="lg:col-span-5 flex items-end">
+                <button
+                  type="submit"
+                  disabled={isQuickSubmitting || !quickOpponentName.trim()}
+                  className="w-full py-2 px-4 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-md transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-2"
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  {isQuickSubmitting ? 'Enregistrement...' : 'Enregistrer immédiatement la partie amicale'}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
 
         {/* Barre de sous-navigation de l'espace amical */}
         <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200">
@@ -340,6 +633,78 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
               </div>
               <div className="text-[11px] font-sans text-slate-500 mt-1">
                 Sans impact Elo
+              </div>
+            </div>
+          </div>
+
+          {/* Répartition détaillée par Cadence : Classique, Rapide, Blitz */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900">Classique (Standard)</span>
+                <span className="text-[11px] font-mono font-bold text-slate-500">
+                  {cadenceBreakdown.standard.total} partie(s)
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xl font-bold font-mono text-emerald-700">
+                  {cadenceBreakdown.standard.winRate}% victoires
+                </span>
+                <span className="text-[11px] font-mono text-slate-600">
+                  +{cadenceBreakdown.standard.wins} · ={cadenceBreakdown.standard.draws} · -{cadenceBreakdown.standard.losses}
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-600 h-full"
+                  style={{ width: `${cadenceBreakdown.standard.winRate}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900">Rapide</span>
+                <span className="text-[11px] font-mono font-bold text-slate-500">
+                  {cadenceBreakdown.rapid.total} partie(s)
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xl font-bold font-mono text-emerald-700">
+                  {cadenceBreakdown.rapid.winRate}% victoires
+                </span>
+                <span className="text-[11px] font-mono text-slate-600">
+                  +{cadenceBreakdown.rapid.wins} · ={cadenceBreakdown.rapid.draws} · -{cadenceBreakdown.rapid.losses}
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-600 h-full"
+                  style={{ width: `${cadenceBreakdown.rapid.winRate}%` }}
+                />
+              </div>
+            </div>
+
+            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-900">Blitz</span>
+                <span className="text-[11px] font-mono font-bold text-slate-500">
+                  {cadenceBreakdown.blitz.total} partie(s)
+                </span>
+              </div>
+              <div className="flex items-baseline justify-between">
+                <span className="text-xl font-bold font-mono text-emerald-700">
+                  {cadenceBreakdown.blitz.winRate}% victoires
+                </span>
+                <span className="text-[11px] font-mono text-slate-600">
+                  +{cadenceBreakdown.blitz.wins} · ={cadenceBreakdown.blitz.draws} · -{cadenceBreakdown.blitz.losses}
+                </span>
+              </div>
+              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+                <div
+                  className="bg-emerald-600 h-full"
+                  style={{ width: `${cadenceBreakdown.blitz.winRate}%` }}
+                />
               </div>
             </div>
           </div>

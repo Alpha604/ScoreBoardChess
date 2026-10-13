@@ -1,7 +1,7 @@
 export type FideTitle = 'None' | 'CM' | 'FM' | 'IM' | 'GM' | 'WCM' | 'WFM' | 'WIM' | 'WGM';
 export type TimeControlCategory = 'Standard' | 'Rapid' | 'Blitz';
 export type TournamentFormat = 'Swiss' | 'Round Robin' | 'Team' | 'Knockout';
-export type TournamentStatus = 'upcoming' | 'ongoing' | 'completed';
+export type TournamentStatus = 'upcoming' | 'ongoing' | 'completed' | 'paused';
 export type PlayerColor = 'White' | 'Black';
 export type GameResult = '1-0' | '0-1' | '1/2-1/2';
 export type GameTermination =
@@ -70,6 +70,9 @@ export interface Tournament {
   finalRank?: number; // Classement final du joueur (ex: 12 pour 12e)
   startingElo: number;
   status: TournamentStatus;
+  isPaused?: boolean; // Tournoi ou infos en pause si pas encore commencé
+  pausedNotes?: string; // Motif de mise en pause (ex: en attente du tirage, calendrier)
+  pausedFields?: string[]; // Liste des éléments mis en pause
   normTarget: string;
   notes: string;
 }

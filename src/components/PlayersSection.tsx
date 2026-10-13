@@ -87,6 +87,7 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
   const [federation, setFederation] = useState('FRA');
   const [club, setClub] = useState('');
   const [notes, setNotes] = useState('');
+  const [modalStep, setModalStep] = useState<1 | 2 | 3>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Modale de confirmation de suppression (3s)
@@ -233,6 +234,7 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
     setFederation('FRA');
     setClub('');
     setNotes('');
+    setModalStep(1);
     setIsModalOpen(true);
   };
 
@@ -256,6 +258,7 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
     setFederation(opp.federation || 'FRA');
     setClub(opp.club || '');
     setNotes(opp.notes || '');
+    setModalStep(1);
     setIsModalOpen(true);
   };
 
@@ -830,285 +833,454 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
         </div>
       )}
 
-      {/* Modal Ajouter / Modifier un Joueur */}
+      {/* Modal Ajouter / Modifier un Joueur - Assistant en 3 Étapes */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-lg max-w-lg w-full p-6 space-y-5 shadow-xl">
+          <div className="bg-white border border-slate-200 rounded-xl max-w-xl w-full p-6 space-y-5 shadow-2xl">
+            {/* En-tête de la modale */}
             <div className="flex items-center justify-between border-b border-slate-200 pb-3">
               <div>
                 <h2 className="text-base font-bold text-slate-900">
-                  {editingOpponentId ? 'Modifier la fiche joueur' : 'Ajouter un joueur'}
+                  {editingOpponentId ? 'Modifier la fiche joueur' : 'Ajouter un nouveau joueur'}
                 </h2>
-                <p className="text-xs text-slate-500">
-                  Cochez « ? » si vous n’êtes pas certain du nom ou si ses classements Elo sont inconnus.
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Étape {modalStep} sur 3 · Renseignez les informations pas à pas
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-slate-400 hover:text-slate-700 rounded cursor-pointer"
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <div className="flex items-center justify-between mb-1">
-                    <label className="font-bold text-slate-700">
-                      NOM, Prénom *
-                    </label>
-                    <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={isNameUncertain}
-                        onChange={(e) => setIsNameUncertain(e.target.checked)}
-                        className="rounded border-slate-300 text-slate-900"
-                      />
-                      Nom incertain (?)
-                    </label>
-                  </div>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      required
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      placeholder="Ex: VANDENBERGHE, Lucas"
-                      className="w-full px-3 py-2 border border-slate-300 rounded-md font-semibold pr-8"
-                    />
-                    {isNameUncertain && (
-                      <span className="absolute right-2.5 top-1/2 -translate-y-1/2 font-mono font-bold text-amber-700">
-                        ?
-                      </span>
-                    )}
-                  </div>
+            {/* Stepper visuel à 3 étapes */}
+            <div className="grid grid-cols-3 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalStep(1)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 1
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : modalStep > 1
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 1
                 </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Titre FIDE
-                  </label>
-                  <select
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value as FideTitle)}
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md bg-white"
-                  >
-                    {FIDE_TITLES.map((t) => (
-                      <option key={t} value={t}>
-                        {t === 'None' ? 'Aucun' : t}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
+                <div className="text-xs font-bold truncate">Identité & Club</div>
+              </button>
 
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="font-bold text-slate-900">
-                    Classements Elo par cadence
+              <button
+                type="button"
+                onClick={() => {
+                  if (name.trim()) setModalStep(2);
+                }}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 2
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : modalStep > 2
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 2
+                </div>
+                <div className="text-xs font-bold truncate">Classements Elo</div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (name.trim()) setModalStep(3);
+                }}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 3
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 3
+                </div>
+                <div className="text-xs font-bold truncate">Confirmation</div>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+              {/* ÉTAPE 1 : IDENTITÉ, TITRE & CLUBS */}
+              {modalStep === 1 && (
+                <div className="space-y-4 pt-1">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-bold text-slate-800">
+                          NOM, Prénom *
+                        </label>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-amber-800 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isNameUncertain}
+                            onChange={(e) => setIsNameUncertain(e.target.checked)}
+                            className="rounded border-slate-300 text-slate-900"
+                          />
+                          Nom incertain (?)
+                        </label>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type="text"
+                          required
+                          value={name}
+                          onChange={(e) => setName(e.target.value)}
+                          placeholder="Ex: VANDENBERGHE, Lucas"
+                          className="w-full px-3 py-2 border border-slate-300 rounded-lg font-semibold pr-8 focus:outline-none focus:border-slate-900"
+                        />
+                        {isNameUncertain && (
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs border border-amber-300">
+                            ?
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-1">
+                        Format recommandé : « NOM, Prénom » pour un tri alphabétique optimal.
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        Titre FIDE
+                      </label>
+                      <select
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value as FideTitle)}
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-lg bg-white"
+                      >
+                        {FIDE_TITLES.map((t) => (
+                          <option key={t} value={t}>
+                            {t === 'None' ? 'Aucun titre' : t}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = !(
-                        isStandardEloUnknown &&
+
+                  <div className="grid grid-cols-2 gap-3 pt-2">
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        ID FIDE (numérique)
+                      </label>
+                      <input
+                        type="text"
+                        value={fideId}
+                        onChange={(e) =>
+                          setFideId(e.target.value.replace(/[^0-9]/g, ''))
+                        }
+                        placeholder="Ex: 65104823"
+                        className="w-full px-3 py-2 font-mono border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        ID FFE (code club)
+                      </label>
+                      <input
+                        type="text"
+                        value={ffeId}
+                        onChange={(e) => setFfeId(e.target.value.toUpperCase())}
+                        placeholder="Ex: K59412"
+                        className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block font-bold text-slate-800 mb-1">
+                        Club d'échecs
+                      </label>
+                      <input
+                        type="text"
+                        value={club}
+                        onChange={(e) => setClub(e.target.value)}
+                        placeholder="Ex: Échiquier Lillois"
+                        className="w-full px-3 py-2 border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                    <div>
+                      <label className="block font-bold text-slate-800 mb-1">
+                        Fédération
+                      </label>
+                      <input
+                        type="text"
+                        maxLength={3}
+                        value={federation}
+                        onChange={(e) => setFederation(e.target.value.toUpperCase())}
+                        placeholder="FRA"
+                        className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ÉTAPE 2 : CLASSEMENTS ELO PAR CADENCE */}
+              {modalStep === 2 && (
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <div className="font-bold text-slate-900 text-sm">
+                          Classements Elo par cadence
+                        </div>
+                        <p className="text-[11px] text-slate-500">
+                          Saisissez le classement officiel ou cochez « ? » si inconnu.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !(
+                            isStandardEloUnknown &&
+                            isRapidEloUnknown &&
+                            isBlitzEloUnknown
+                          );
+                          setIsStandardEloUnknown(next);
+                          setIsRapidEloUnknown(next);
+                          setIsBlitzEloUnknown(next);
+                        }}
+                        className="text-[11px] font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-md cursor-pointer transition-colors"
+                      >
+                        {isStandardEloUnknown &&
                         isRapidEloUnknown &&
                         isBlitzEloUnknown
-                      );
-                      setIsStandardEloUnknown(next);
-                      setIsRapidEloUnknown(next);
-                      setIsBlitzEloUnknown(next);
-                    }}
-                    className="text-[11px] font-semibold text-slate-700 hover:text-slate-900 underline cursor-pointer"
-                  >
-                    {isStandardEloUnknown &&
-                    isRapidEloUnknown &&
-                    isBlitzEloUnknown
-                      ? 'Saisir les Elos connus'
-                      : 'Tous les Elos inconnus (?)'}
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-bold text-slate-700">
-                        Classique
-                      </label>
-                      <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isStandardEloUnknown}
-                          onChange={(e) =>
-                            setIsStandardEloUnknown(e.target.checked)
-                          }
-                          className="rounded border-slate-300"
-                        />
-                        ?
-                      </label>
+                          ? 'Saisir les Elos'
+                          : 'Tous inconnus (?)'}
+                      </button>
                     </div>
-                    {isStandardEloUnknown ? (
-                      <div className="w-full px-3 py-2 font-mono font-bold bg-slate-100 border border-slate-300 rounded-md text-slate-600 text-center">
-                        ?
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        min={800}
-                        max={3500}
-                        required
-                        value={standardElo}
-                        onChange={(e) => setStandardElo(Number(e.target.value))}
-                        className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
-                      />
-                    )}
-                  </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-bold text-slate-700">Rapide</label>
-                      <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isRapidEloUnknown}
-                          onChange={(e) => setIsRapidEloUnknown(e.target.checked)}
-                          className="rounded border-slate-300"
-                        />
-                        ?
-                      </label>
-                    </div>
-                    {isRapidEloUnknown ? (
-                      <div className="w-full px-3 py-2 font-mono font-bold bg-slate-100 border border-slate-300 rounded-md text-slate-600 text-center">
-                        ?
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-1">
+                      {/* Standard */}
+                      <div className="bg-white p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="font-bold text-indigo-950">
+                            Classique
+                          </label>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isStandardEloUnknown}
+                              onChange={(e) =>
+                                setIsStandardEloUnknown(e.target.checked)
+                              }
+                              className="rounded border-slate-300"
+                            />
+                            Inconnu ?
+                          </label>
+                        </div>
+                        {isStandardEloUnknown ? (
+                          <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 rounded-md text-amber-800 text-center">
+                            ? Inconnu
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min={800}
+                            max={3500}
+                            required
+                            value={standardElo}
+                            onChange={(e) => setStandardElo(Number(e.target.value))}
+                            className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <input
-                        type="number"
-                        min={800}
-                        max={3500}
-                        value={rapidElo}
-                        onChange={(e) => setRapidElo(Number(e.target.value))}
-                        className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
-                      />
-                    )}
-                  </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-bold text-slate-700">Blitz</label>
-                      <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-600 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isBlitzEloUnknown}
-                          onChange={(e) => setIsBlitzEloUnknown(e.target.checked)}
-                          className="rounded border-slate-300"
-                        />
-                        ?
-                      </label>
-                    </div>
-                    {isBlitzEloUnknown ? (
-                      <div className="w-full px-3 py-2 font-mono font-bold bg-slate-100 border border-slate-300 rounded-md text-slate-600 text-center">
-                        ?
+                      {/* Rapide */}
+                      <div className="bg-white p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="font-bold text-sky-950">Rapide</label>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isRapidEloUnknown}
+                              onChange={(e) => setIsRapidEloUnknown(e.target.checked)}
+                              className="rounded border-slate-300"
+                            />
+                            Inconnu ?
+                          </label>
+                        </div>
+                        {isRapidEloUnknown ? (
+                          <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 rounded-md text-amber-800 text-center">
+                            ? Inconnu
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min={800}
+                            max={3500}
+                            value={rapidElo}
+                            onChange={(e) => setRapidElo(Number(e.target.value))}
+                            className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
+                          />
+                        )}
                       </div>
-                    ) : (
-                      <input
-                        type="number"
-                        min={800}
-                        max={3500}
-                        value={blitzElo}
-                        onChange={(e) => setBlitzElo(Number(e.target.value))}
-                        className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
-                      />
-                    )}
+
+                      {/* Blitz */}
+                      <div className="bg-white p-3 rounded-lg border border-slate-200">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <label className="font-bold text-amber-950">Blitz</label>
+                          <label className="inline-flex items-center gap-1 text-[10px] font-semibold text-amber-800 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isBlitzEloUnknown}
+                              onChange={(e) => setIsBlitzEloUnknown(e.target.checked)}
+                              className="rounded border-slate-300"
+                            />
+                            Inconnu ?
+                          </label>
+                        </div>
+                        {isBlitzEloUnknown ? (
+                          <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 rounded-md text-amber-800 text-center">
+                            ? Inconnu
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min={800}
+                            max={3500}
+                            value={blitzElo}
+                            onChange={(e) => setBlitzElo(Number(e.target.value))}
+                            className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-md text-slate-900"
+                          />
+                        )}
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    ID FIDE
-                  </label>
-                  <input
-                    type="text"
-                    value={fideId}
-                    onChange={(e) =>
-                      setFideId(e.target.value.replace(/[^0-9]/g, ''))
-                    }
-                    placeholder="Ex: 65104823"
-                    className="w-full px-3 py-2 font-mono border border-slate-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    ID FFE
-                  </label>
-                  <input
-                    type="text"
-                    value={ffeId}
-                    onChange={(e) => setFfeId(e.target.value.toUpperCase())}
-                    placeholder="Ex: K59412"
-                    className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-md"
-                  />
-                </div>
-              </div>
+              {/* ÉTAPE 3 : NOTES & RÉCAPITULATIF / CONFIRMATION */}
+              {modalStep === 3 && (
+                <div className="space-y-4 pt-1">
+                  <div>
+                    <label className="block font-bold text-slate-800 mb-1">
+                      Notes & Observations (style de jeu, répertoire, ouvertures)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={notes}
+                      onChange={(e) => setNotes(e.target.value)}
+                      placeholder="Ex: Joue l'Espagnole avec les Blancs, très solide en finale de tours..."
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-2">
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Club
-                  </label>
-                  <input
-                    type="text"
-                    value={club}
-                    onChange={(e) => setClub(e.target.value)}
-                    placeholder="Nom du club"
-                    className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                  />
-                </div>
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">
-                    Fédération
-                  </label>
-                  <input
-                    type="text"
-                    maxLength={3}
-                    value={federation}
-                    onChange={(e) => setFederation(e.target.value.toUpperCase())}
-                    className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-md"
-                  />
-                </div>
-              </div>
+                  {/* Récapitulatif visuel avant confirmation */}
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+                    <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
+                      Aperçu de la fiche joueur
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold text-slate-900 flex items-center gap-2">
+                          {title !== 'None' && (
+                            <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-900 text-white">
+                              {title}
+                            </span>
+                          )}
+                          <span>{formatPlayerNameLastFirst(name || 'Sans nom')}</span>
+                          {isNameUncertain && (
+                            <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 rounded">
+                              ? (Nom incertain)
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-600 mt-1 flex flex-wrap gap-2">
+                          <span>Club : {club || 'Non renseigné'}</span>
+                          <span>·</span>
+                          <span>Fédération : {federation || 'FRA'}</span>
+                          <span>·</span>
+                          <span>FIDE : {fideId || '—'}</span>
+                          <span>·</span>
+                          <span>FFE : {ffeId || '—'}</span>
+                        </div>
+                      </div>
+                    </div>
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Notes (style de jeu, répertoire...)
-                </label>
-                <textarea
-                  rows={2}
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Ex: Joue la Caro-Kann avec les Noirs..."
-                  className="w-full px-3 py-2 border border-slate-300 rounded-md"
-                />
-              </div>
+                    <div className="grid grid-cols-3 gap-2 pt-2 border-t border-slate-200 font-mono text-center">
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <div className="text-[10px] text-slate-500 font-sans">Classique</div>
+                        <div className="font-bold text-slate-900 text-sm">
+                          {isStandardEloUnknown ? '?' : standardElo}
+                        </div>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <div className="text-[10px] text-slate-500 font-sans">Rapide</div>
+                        <div className="font-bold text-slate-900 text-sm">
+                          {isRapidEloUnknown ? '?' : rapidElo}
+                        </div>
+                      </div>
+                      <div className="p-2 bg-white rounded border border-slate-200">
+                        <div className="text-[10px] text-slate-500 font-sans">Blitz</div>
+                        <div className="font-bold text-slate-900 text-sm">
+                          {isBlitzEloUnknown ? '?' : blitzElo}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
 
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+              {/* Boutons de navigation du Stepper */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 rounded-md cursor-pointer"
+                  className="px-3.5 py-2 text-xs font-bold text-slate-600 hover:text-slate-900 cursor-pointer"
                 >
                   Annuler
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
-                >
-                  {isSubmitting ? 'Enregistrement...' : 'Enregistrer'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {modalStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setModalStep((s) => (s - 1) as 1 | 2)}
+                      className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                    >
+                      ← Précédent
+                    </button>
+                  )}
+
+                  {modalStep < 3 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!name.trim()) {
+                          alert('Veuillez renseigner le nom du joueur.');
+                          return;
+                        }
+                        setModalStep((s) => (s + 1) as 2 | 3);
+                      }}
+                      className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-800 cursor-pointer"
+                    >
+                      Suivant →
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting || !name.trim()}
+                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg disabled:opacity-50 cursor-pointer shadow-xs"
+                    >
+                      {isSubmitting ? 'Enregistrement...' : '✓ Confirmer & Enregistrer'}
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>

@@ -134,11 +134,17 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   const [pgn, setPgn] = useState('');
   const [chessComUrl, setChessComUrl] = useState('');
   const [keyMomentNote, setKeyMomentNote] = useState('');
+  const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Variation Elo : calcul automatique FIDE avec possibilité de modification manuelle
   const [manualEloChange, setManualEloChange] = useState<string>('');
   const [isManualEloOverride, setIsManualEloOverride] = useState<boolean>(false);
+
+  // Tournois triés chronologiquement du plus récent au plus vieux pour les menus déroulants
+  const chronologicallySortedTournaments = useMemo(() => {
+    return [...tournaments].sort((a, b) => b.startDate.localeCompare(a.startDate));
+  }, [tournaments]);
 
   // Adversaires triés par ordre alphabétique "NOM, Prénom"
   const sortedOpponents = useMemo(
@@ -211,6 +217,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     setKeyMomentNote('');
     setManualEloChange('');
     setIsManualEloOverride(false);
+    setModalStep(1);
     setIsModalOpen(true);
   };
 
@@ -247,6 +254,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
       g.eloChange >= 0 ? `+${g.eloChange.toFixed(1)}` : g.eloChange.toFixed(1)
     );
     setIsManualEloOverride(true);
+    setModalStep(1);
     setIsModalOpen(true);
   };
 
@@ -493,62 +501,44 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onSelectTournamentFilter('')}
-            className={`px-3.5 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
-              selectedTournamentFilter === ''
-                ? 'bg-slate-900 text-white border-slate-900'
-                : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-            }`}
-          >
-            Toutes les parties ({games.length})
-          </button>
+        {/* Menu déroulant de filtre des tournois classé du plus récent au plus vieux */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+          <div className="relative flex-1">
+            <select
+              value={selectedTournamentFilter}
+              onChange={(e) => onSelectTournamentFilter(e.target.value)}
+              className="w-full px-3.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-900"
+            >
+              <option value="">
+                Toutes les parties enregistrées ({games.length})
+              </option>
+              {(isFriendlyMode || freeGamesCount > 0) && (
+                <option value={FREE_GAME_TOURNAMENT_ID}>
+                  ⚡ Parties libres / Hors tournoi ({freeGamesCount})
+                </option>
+              )}
+              {chronologicallySortedTournaments.map((t) => {
+                const count = games.filter((g) => g.tournamentId === t.id).length;
+                return (
+                  <option key={t.id} value={t.id}>
+                    📅 [{t.startDate}] · {t.name} ({count} partie{count > 1 ? 's' : ''} · {t.timeControl})
+                  </option>
+                );
+              })}
+            </select>
+          </div>
 
-          {(isFriendlyMode || freeGamesCount > 0) && (
+          {selectedTournamentFilter && (
             <button
               type="button"
-              onClick={() =>
-                onSelectTournamentFilter(FREE_GAME_TOURNAMENT_ID)
-              }
-              className={`px-3.5 py-1.5 text-xs font-medium rounded-lg border transition-colors cursor-pointer ${
-                selectedTournamentFilter === FREE_GAME_TOURNAMENT_ID
-                  ? 'bg-slate-900 text-white border-slate-900'
-                  : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-              }`}
+              onClick={() => onSelectTournamentFilter('')}
+              className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg cursor-pointer flex items-center gap-1.5 shrink-0"
+              title="Afficher toutes les parties"
             >
-              Parties libres / Hors tournoi ({freeGamesCount})
+              <X className="w-3.5 h-3.5 text-slate-500" />
+              Réinitialiser le filtre
             </button>
           )}
-
-          {tournaments.map((t) => {
-            const count = games.filter((g) => g.tournamentId === t.id).length;
-            const active = selectedTournamentFilter === t.id;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => onSelectTournamentFilter(t.id)}
-                className={`px-3.5 py-1.5 text-xs font-medium rounded-lg border transition-colors text-left cursor-pointer ${
-                  active
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                {t.name}{' '}
-                <span
-                  className={
-                    active
-                      ? 'text-slate-300 font-mono'
-                      : 'text-slate-500 font-mono'
-                  }
-                >
-                  ({count})
-                </span>
-              </button>
-            );
-          })}
         </div>
 
         {/* Résumé sobre */}
@@ -1099,10 +1089,10 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   </span>
                 </div>
                 <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                  {editingGameId ? 'Modifier la partie' : 'Enregistrer une partie'}
+                  {editingGameId ? 'Modifier la partie' : 'Enregistrer une nouvelle partie'}
                 </h2>
                 <p className="text-xs text-slate-600">
-                  Le gain d'Elo est calculé automatiquement selon la formule FIDE, et vous pouvez le modifier manuellement à tout moment.
+                  Étape {modalStep} sur 4 · Saisie claire et structurée pas à pas
                 </p>
               </div>
               <button
@@ -1114,622 +1104,806 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5 text-xs">
-              {/* BLOC 1 : CADRE, CADENCE & MA COULEUR */}
-              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <Trophy className="w-3.5 h-3.5 text-blue-600" />
-                  1. Contexte du match & Cadence
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                  <div className="sm:col-span-6">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Tournoi ou Session
-                    </label>
-                    <select
-                      value={tournamentId}
-                      onChange={(e) => {
-                        const nextId = e.target.value;
-                        setTournamentId(nextId);
-                        const chosenTourney = tournaments.find((t) => t.id === nextId);
-                        if (chosenTourney) {
-                          setTimeControl(chosenTourney.timeControl);
-                        }
-                        const chosenOp = opponents.find((o) => o.id === opponentId);
-                        if (chosenOp) {
-                          linkOpponentFields(
-                            chosenOp,
-                            nextId,
-                            chosenTourney?.timeControl || timeControl
-                          );
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium text-slate-900 focus:outline-none focus:border-blue-600"
-                    >
-                      <option value={FREE_GAME_TOURNAMENT_ID}>
-                        ⚡ Partie libre (Hors tournoi / Entraînement)
-                      </option>
-                      {tournaments.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          🏆 {t.name} ({t.timeControl})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Cadence
-                    </label>
-                    <select
-                      value={
-                        tournamentId !== FREE_GAME_TOURNAMENT_ID
-                          ? tournaments.find((t) => t.id === tournamentId)
-                              ?.timeControl || timeControl
-                          : timeControl
-                      }
-                      disabled={tournamentId !== FREE_GAME_TOURNAMENT_ID}
-                      onChange={(e) => {
-                        const nextTc = e.target.value as TimeControlCategory;
-                        setTimeControl(nextTc);
-                        const chosenOp = opponents.find((o) => o.id === opponentId);
-                        if (chosenOp) {
-                          linkOpponentFields(chosenOp, tournamentId, nextTc);
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium disabled:bg-slate-100 disabled:text-slate-500"
-                    >
-                      <option value="Standard">Classique (Standard)</option>
-                      <option value="Rapid">Rapide</option>
-                      <option value="Blitz">Blitz</option>
-                    </select>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Date jouée
-                    </label>
-                    <input
-                      type="date"
-                      value={datePlayed}
-                      onChange={(e) => setDatePlayed(e.target.value)}
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      {tournamentId === FREE_GAME_TOURNAMENT_ID
-                        ? 'N° Partie'
-                        : 'Ronde n°'}
-                    </label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={50}
-                      value={round}
-                      onChange={(e) => setRound(Number(e.target.value))}
-                      className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-
-                  {/* Choix visuel Blancs / Noirs avec pièces */}
-                  <div className="sm:col-span-9">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Mes pièces
-                    </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setPlayerColor('White')}
-                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border font-bold transition-all cursor-pointer ${
-                          playerColor === 'White'
-                            ? 'bg-white text-slate-900 border-blue-600 ring-2 ring-blue-500/20 shadow-xs'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="text-base leading-none">♔</span>
-                        <span>Blancs (1er coup)</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => setPlayerColor('Black')}
-                        className={`flex items-center justify-center gap-2 py-2 px-3 rounded-lg border font-bold transition-all cursor-pointer ${
-                          playerColor === 'Black'
-                            ? 'bg-slate-900 text-white border-slate-900 ring-2 ring-slate-800/40 shadow-xs'
-                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
-                        }`}
-                      >
-                        <span className="text-base leading-none">♚</span>
-                        <span>Noirs (2e coup)</span>
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* BLOC 2 : ADVERSAIRE & SES INFOS */}
-              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                    2. Adversaire affronté
-                  </div>
-                  {opponentId && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setOpponentId('');
-                        setOpponentName('');
-                        setOpponentNameUncertain(false);
-                        setOpponentFideId('');
-                        setOpponentFfeId('');
-                        setOpponentTitle('None');
-                        setOpponentElo(1600);
-                        setOpponentEloUnknown(false);
-                      }}
-                      className="text-[11px] font-bold text-blue-700 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <UserPlus className="w-3 h-3" />
-                      Saisir un nouvel adversaire
-                    </button>
-                  )}
-                </div>
-
-                {sortedOpponents.length > 0 && (
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Choisir parmi vos adversaires déjà enregistrés (A → Z)
-                    </label>
-                    <select
-                      value={opponentId}
-                      onChange={(e) => {
-                        const found = opponents.find((o) => o.id === e.target.value);
-                        if (found) {
-                          linkOpponentFields(found);
-                        } else {
-                          setOpponentId('');
-                        }
-                      }}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-indigo-600"
-                    >
-                      <option value="">
-                        -- Sélectionner un joueur existant (ou saisir manuellement ci-dessous) --
-                      </option>
-                      {sortedOpponents.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {formatPlayerNameLastFirst(o.name, o.isNameUncertain)} (Std:{' '}
-                          {o.isStandardEloUnknown ? '?' : o.standardElo || o.elo})
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                  <div className="sm:col-span-6">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-semibold text-slate-800">
-                        NOM, Prénom de l'adversaire *
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setOpponentNameUncertain(!opponentNameUncertain)}
-                        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
-                          opponentNameUncertain
-                            ? 'bg-amber-100 text-amber-900 border-amber-300'
-                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                        }`}
-                        title="Cocher si vous n'êtes pas certain de l'orthographe ou du nom"
-                      >
-                        <HelpCircle className="w-3 h-3" />
-                        Nom incertain (?)
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={opponentName}
-                        onChange={(e) => {
-                          setOpponentName(e.target.value);
-                          const m = opponents.find(
-                            (o) =>
-                              stripQuestionMarkFromName(o.name).toLowerCase() ===
-                              stripQuestionMarkFromName(e.target.value).toLowerCase()
-                          );
-                          if (m) linkOpponentFields(m);
-                        }}
-                        placeholder="Ex: VANDENBERGHE, Lucas"
-                        required={!opponentNameUncertain}
-                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-indigo-600"
-                      />
-                      {opponentNameUncertain && (
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs border border-amber-300">
-                          ?
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-semibold text-slate-800">
-                        Son classement Elo
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => setOpponentEloUnknown(!opponentEloUnknown)}
-                        className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
-                          opponentEloUnknown
-                            ? 'bg-amber-100 text-amber-900 border-amber-300'
-                            : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                        }`}
-                        title="Indiquer ? si l'Elo de l'adversaire est inconnu ou non classé"
-                      >
-                        Elo ?
-                      </button>
-                    </div>
-                    {opponentEloUnknown ? (
-                      <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 text-amber-900 rounded-lg text-center">
-                        ? (Inconnu)
-                      </div>
-                    ) : (
-                      <input
-                        type="number"
-                        min={600}
-                        max={3500}
-                        value={opponentElo}
-                        onChange={(e) => setOpponentElo(Number(e.target.value))}
-                        required
-                        className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                      />
-                    )}
-                  </div>
-
-                  <div className="sm:col-span-3">
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Titre FIDE
-                    </label>
-                    <select
-                      value={opponentTitle}
-                      onChange={(e) => setOpponentTitle(e.target.value as FideTitle)}
-                      className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                    >
-                      {FIDE_TITLES.map((t) => (
-                        <option key={t} value={t}>
-                          {t === 'None' ? 'Sans titre' : t}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="sm:col-span-4">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      ID FIDE (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      value={opponentFideId}
-                      onChange={(e) => {
-                        const clean = e.target.value.replace(/[^0-9]/g, '');
-                        setOpponentFideId(clean);
-                        const m = opponents.find(
-                          (o) => o.fideId === clean && clean.length >= 4
-                        );
-                        if (m) linkOpponentFields(m);
-                      }}
-                      placeholder="Ex: 65104823"
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-4">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Code FFE (optionnel)
-                    </label>
-                    <input
-                      type="text"
-                      value={opponentFfeId}
-                      onChange={(e) => {
-                        const clean = e.target.value.toUpperCase().trim();
-                        setOpponentFfeId(clean);
-                        const m = opponents.find(
-                          (o) => o.ffeId.toUpperCase() === clean && clean.length >= 3
-                        );
-                        if (m) linkOpponentFields(m);
-                      }}
-                      placeholder="Ex: K59102"
-                      className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-
-                  <div className="sm:col-span-4">
-                    <label className="block font-semibold text-slate-700 mb-1">
-                      Fédération
-                    </label>
-                    <input
-                      type="text"
-                      maxLength={3}
-                      value={opponentFederation}
-                      onChange={(e) => setOpponentFederation(e.target.value.toUpperCase())}
-                      placeholder="FRA"
-                      className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* BLOC 3 : RÉSULTAT DU MATCH (3 BOUTONS VIBRANTS ET CLAIRS) */}
-              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                    <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                    3. Mon Résultat (par rapport à moi) *
-                  </div>
-                  <span className="text-[11px] font-medium text-slate-500">
-                    Cliquez sur l'issue de votre partie
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-3 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setMyScore(1)}
-                    className={`py-3 px-4 rounded-xl font-bold text-sm border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                      myScore === 1
-                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-400/40'
-                        : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'
-                    }`}
-                  >
-                    <span className="text-lg">✓</span>
-                    <span>1 · Victoire</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMyScore(0.5)}
-                    className={`py-3 px-4 rounded-xl font-bold text-sm border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                      myScore === 0.5
-                        ? 'bg-amber-500 text-white border-amber-500 shadow-md ring-2 ring-amber-300/40'
-                        : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
-                    }`}
-                  >
-                    <span className="text-lg">½</span>
-                    <span>½ · Nulle</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setMyScore(0)}
-                    className={`py-3 px-4 rounded-xl font-bold text-sm border-2 transition-all cursor-pointer flex flex-col items-center justify-center gap-1 ${
-                      myScore === 0
-                        ? 'bg-rose-600 text-white border-rose-600 shadow-md ring-2 ring-rose-400/40'
-                        : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
-                    }`}
-                  >
-                    <span className="text-lg">✕</span>
-                    <span>0 · Défaite</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* BLOC 4 : VARIATION ELO (CALCUL AUTOMATIQUE & MODIFICATION MANUELLE) */}
-              <div
-                className={`p-4 rounded-xl border-2 transition-all space-y-3 ${
-                  effectiveEloDelta > 0
-                    ? 'bg-gradient-to-r from-emerald-50/80 to-teal-50/40 border-emerald-300'
-                    : effectiveEloDelta < 0
-                    ? 'bg-gradient-to-r from-rose-50/80 to-red-50/40 border-rose-300'
-                    : 'bg-gradient-to-r from-slate-50 to-amber-50/40 border-slate-300'
+            {/* Stepper visuel à 4 étapes */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              <button
+                type="button"
+                onClick={() => setModalStep(1)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 1
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : modalStep > 1
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
                 }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-[11px] font-bold uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
-                      <Sparkles className="w-4 h-4 text-emerald-600" />
-                      4. Variation Elo : Gain / Perte
-                    </span>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        isManualEloOverride
-                          ? 'bg-amber-200 text-amber-900 border border-amber-300'
-                          : 'bg-emerald-200 text-emerald-900 border border-emerald-300'
-                      }`}
-                    >
-                      {isManualEloOverride
-                        ? '✏️ Modifié manuellement'
-                        : '⚡ Calcul FIDE automatique'}
-                    </span>
-                  </div>
-
-                  {isManualEloOverride && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsManualEloOverride(false);
-                        setManualEloChange('');
-                      }}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold text-blue-800 bg-white hover:bg-blue-50 border border-blue-300 rounded-lg cursor-pointer transition-colors"
-                      title="Rétablir la valeur calculée selon la formule officielle FIDE"
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Rétablir calcul auto FIDE
-                    </button>
-                  )}
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 1
                 </div>
+                <div className="text-xs font-bold truncate">Cadre & Cadence</div>
+              </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-center">
-                  <div className="sm:col-span-7 space-y-1">
-                    <div className="text-xs text-slate-700">
-                      <strong>Formule FIDE appliquée :</strong> ΔR = K × (Score - E)
-                    </div>
-                    <div className="text-[11px] font-mono text-slate-600">
-                      Mon Elo: <strong>{playerElo}</strong> · Adv:{' '}
-                      <strong>{opponentEloUnknown ? '?' : opponentElo}</strong> · E ={' '}
-                      <strong>{expectedScore}</strong> · K = <strong>{kFactorUsed}</strong>
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      {isFriendlyMode
-                        ? 'Mode amical : 0 pt par défaut, mais vous pouvez entrer une valeur si désiré.'
-                        : opponentEloUnknown
-                        ? "Elo adverse inconnu : 0 par défaut, mais vous pouvez saisir l'ajustement officiel de l'arbitre."
-                        : 'Calculé automatiquement en direct. Vous pouvez ajuster le chiffre ci-contre si votre arbitre a compté une valeur différente.'}
-                    </div>
-                  </div>
-
-                  <div className="sm:col-span-5 bg-white p-3 rounded-lg border border-slate-300 shadow-2xs space-y-1.5">
-                    <label className="block text-[11px] font-bold text-slate-800">
-                      Variation enregistrée (pts) :
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        step="0.1"
-                        value={
-                          isManualEloOverride
-                            ? manualEloChange
-                            : isFriendlyMode || opponentEloUnknown
-                            ? 0
-                            : computedEloDelta
-                        }
-                        onChange={(e) => {
-                          setIsManualEloOverride(true);
-                          setManualEloChange(e.target.value);
-                        }}
-                        placeholder="Ex: +7.2 ou -4.5"
-                        className="w-full px-3 py-1.5 font-mono text-lg font-bold text-center border-2 border-slate-300 rounded-lg focus:outline-none focus:border-blue-600"
-                      />
-                      <span
-                        className={`font-mono text-lg font-bold px-2.5 py-1.5 rounded-lg shrink-0 ${
-                          effectiveEloDelta >= 0
-                            ? 'bg-emerald-100 text-emerald-800'
-                            : 'bg-rose-100 text-rose-800'
-                        }`}
-                      >
-                        {effectiveEloDelta >= 0
-                          ? `+${effectiveEloDelta.toFixed(1)}`
-                          : effectiveEloDelta.toFixed(1)}
-                      </span>
-                    </div>
-                  </div>
+              <button
+                type="button"
+                onClick={() => setModalStep(2)}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 2
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : modalStep > 2
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 2
                 </div>
-              </div>
+                <div className="text-xs font-bold truncate">Adversaire</div>
+              </button>
 
-              {/* BLOC 5 : OUVERTURE, CHESS.COM & PGN */}
-              <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
-                <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
-                  <FileText className="w-3.5 h-3.5 text-amber-600" />
-                  5. Détails d'ouverture, PGN & Analyse
+              <button
+                type="button"
+                onClick={() => {
+                  if (opponentName.trim() || opponentNameUncertain) setModalStep(3);
+                }}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 3
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : modalStep > 3
+                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 3
                 </div>
+                <div className="text-xs font-bold truncate">Résultat & Elo</div>
+              </button>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Ouverture (Catalogue ECO ou personnalisée)
-                    </label>
-                    <div className="flex gap-2">
-                      <select
-                        value=""
-                        onChange={(e) => {
-                          const found = ECO_OPENINGS_CATALOG.find(
-                            (o) => o.eco === e.target.value
-                          );
-                          if (found) {
-                            setEcoCode(found.eco);
-                            setOpeningName(found.name);
-                          }
-                        }}
-                        className="w-1/2 px-2.5 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900"
-                      >
-                        <option value="">-- Préréglages ECO --</option>
-                        {ECO_OPENINGS_CATALOG.map((o) => (
-                          <option key={o.eco} value={o.eco}>
-                            {o.eco} - {o.name}
-                          </option>
-                        ))}
-                      </select>
-                      <input
-                        type="text"
-                        value={openingName}
-                        onChange={(e) => setOpeningName(e.target.value)}
-                        placeholder="Nom de l'ouverture"
-                        className="w-1/2 px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium"
-                      />
+              <button
+                type="button"
+                onClick={() => {
+                  if (opponentName.trim() || opponentNameUncertain) setModalStep(4);
+                }}
+                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
+                  modalStep === 4
+                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                    : 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+              >
+                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                  Étape 4
+                </div>
+                <div className="text-xs font-bold truncate">Confirmation</div>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmit} className="space-y-5 text-xs">
+              {/* ÉTAPE 1 : CADRE, CADENCE & MA COULEUR */}
+              {modalStep === 1 && (
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Trophy className="w-3.5 h-3.5 text-blue-600" />
+                      1. Cadre du match, date & cadence
                     </div>
-                  </div>
 
-                  <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="font-semibold text-slate-800">
-                        Lien d'analyse Chess.com (optionnel)
-                      </label>
-                      {chessComUrl && (
-                        <a
-                          href={chessComUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[11px] font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                      <div className="sm:col-span-6">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Tournoi ou Session
+                        </label>
+                        <select
+                          value={tournamentId}
+                          onChange={(e) => {
+                            const nextId = e.target.value;
+                            setTournamentId(nextId);
+                            const chosenTourney = tournaments.find((t) => t.id === nextId);
+                            if (chosenTourney) {
+                              setTimeControl(chosenTourney.timeControl);
+                            }
+                            const chosenOp = opponents.find((o) => o.id === opponentId);
+                            if (chosenOp) {
+                              linkOpponentFields(
+                                chosenOp,
+                                nextId,
+                                chosenTourney?.timeControl || timeControl
+                              );
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
                         >
-                          Tester <ExternalLink className="w-3 h-3" />
-                        </a>
+                          <option value={FREE_GAME_TOURNAMENT_ID}>
+                            ⚡ Partie libre (Hors tournoi / Entraînement)
+                          </option>
+                          {chronologicallySortedTournaments.map((t) => (
+                            <option key={t.id} value={t.id}>
+                              🏆 [{t.startDate}] {t.name} ({t.timeControl})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Cadence
+                        </label>
+                        <select
+                          value={
+                            tournamentId !== FREE_GAME_TOURNAMENT_ID
+                              ? tournaments.find((t) => t.id === tournamentId)
+                                  ?.timeControl || timeControl
+                              : timeControl
+                          }
+                          disabled={tournamentId !== FREE_GAME_TOURNAMENT_ID}
+                          onChange={(e) => {
+                            const nextTc = e.target.value as TimeControlCategory;
+                            setTimeControl(nextTc);
+                            const chosenOp = opponents.find((o) => o.id === opponentId);
+                            if (chosenOp) {
+                              linkOpponentFields(chosenOp, tournamentId, nextTc);
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                        >
+                          <option value="Standard">Classique (Standard)</option>
+                          <option value="Rapid">Rapide</option>
+                          <option value="Blitz">Blitz</option>
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Date jouée
+                        </label>
+                        <input
+                          type="date"
+                          value={datePlayed}
+                          onChange={(e) => setDatePlayed(e.target.value)}
+                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          {tournamentId === FREE_GAME_TOURNAMENT_ID
+                            ? 'N° de la partie'
+                            : 'Ronde n°'}
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={50}
+                          value={round}
+                          onChange={(e) => setRound(Number(e.target.value))}
+                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-8">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Mon Elo lors de la partie
+                        </label>
+                        <input
+                          type="number"
+                          min={600}
+                          max={3500}
+                          value={playerElo}
+                          onChange={(e) => setPlayerElo(Number(e.target.value))}
+                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      {/* Choix visuel Blancs / Noirs avec pièces */}
+                      <div className="sm:col-span-12 pt-1">
+                        <label className="block font-semibold text-slate-800 mb-1.5">
+                          Ma couleur de pièces
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <button
+                            type="button"
+                            onClick={() => setPlayerColor('White')}
+                            className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border-2 font-bold transition-all cursor-pointer ${
+                              playerColor === 'White'
+                                ? 'bg-white text-slate-950 border-slate-900 ring-2 ring-slate-900/10 shadow-sm'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className="text-xl leading-none">♔</span>
+                            <span className="text-sm">Blancs (1er coup)</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setPlayerColor('Black')}
+                            className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border-2 font-bold transition-all cursor-pointer ${
+                              playerColor === 'Black'
+                                ? 'bg-slate-950 text-white border-slate-950 ring-2 ring-slate-950/20 shadow-sm'
+                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                            }`}
+                          >
+                            <span className="text-xl leading-none">♚</span>
+                            <span className="text-sm">Noirs (2e coup)</span>
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ÉTAPE 2 : ADVERSAIRE & SES INFOS */}
+              {modalStep === 2 && (
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                        <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
+                        2. Sélection ou saisie de l'adversaire
+                      </div>
+                      {opponentId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpponentId('');
+                            setOpponentName('');
+                            setOpponentNameUncertain(false);
+                            setOpponentFideId('');
+                            setOpponentFfeId('');
+                            setOpponentTitle('None');
+                            setOpponentElo(1600);
+                            setOpponentEloUnknown(false);
+                          }}
+                          className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                        >
+                          Délier ce joueur
+                        </button>
                       )}
                     </div>
-                    <input
-                      type="url"
-                      value={chessComUrl}
-                      onChange={(e) => setChessComUrl(e.target.value)}
-                      placeholder="https://www.chess.com/analysis/..."
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg"
-                    />
-                  </div>
 
-                  <div>
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      PGN de la partie (copier/coller facultatif)
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={pgn}
-                      onChange={(e) => setPgn(e.target.value)}
-                      placeholder="1. e4 c5 2. Nf3 d6..."
-                      className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
-                  </div>
+                    {sortedOpponents.length > 0 && (
+                      <div>
+                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                          Choisir parmi vos adversaires déjà enregistrés (A → Z)
+                        </label>
+                        <select
+                          value={opponentId}
+                          onChange={(e) => {
+                            const found = opponents.find((o) => o.id === e.target.value);
+                            if (found) {
+                              linkOpponentFields(found);
+                            } else {
+                              setOpponentId('');
+                            }
+                          }}
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
+                        >
+                          <option value="">
+                            -- Sélectionner un joueur existant (ou saisir manuellement ci-dessous) --
+                          </option>
+                          {sortedOpponents.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {formatPlayerNameLastFirst(o.name, o.isNameUncertain)} (Std:{' '}
+                              {o.isStandardEloUnknown ? '?' : o.standardElo || o.elo})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
 
-                  <div>
-                    <label className="block font-semibold text-slate-800 mb-1">
-                      Notes personnelles / Moment clé
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={keyMomentNote}
-                      onChange={(e) => setKeyMomentNote(e.target.value)}
-                      placeholder="Analyse personnelle, erreurs, préparatifs..."
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
-                    />
+                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                      <div className="sm:col-span-6">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-semibold text-slate-800">
+                            NOM, Prénom de l'adversaire *
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setOpponentNameUncertain(!opponentNameUncertain)}
+                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
+                              opponentNameUncertain
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                            }`}
+                            title="Cocher si vous n'êtes pas certain de l'orthographe ou du nom"
+                          >
+                            <HelpCircle className="w-3 h-3" />
+                            Nom incertain (?)
+                          </button>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            value={opponentName}
+                            onChange={(e) => {
+                              setOpponentName(e.target.value);
+                              const m = opponents.find(
+                                (o) =>
+                                  stripQuestionMarkFromName(o.name).toLowerCase() ===
+                                  stripQuestionMarkFromName(e.target.value).toLowerCase()
+                              );
+                              if (m) linkOpponentFields(m);
+                            }}
+                            placeholder="Ex: VANDENBERGHE, Lucas"
+                            required={!opponentNameUncertain}
+                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
+                          />
+                          {opponentNameUncertain && (
+                            <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs border border-amber-300">
+                              ?
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-semibold text-slate-800">
+                            Son classement Elo
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => setOpponentEloUnknown(!opponentEloUnknown)}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
+                              opponentEloUnknown
+                                ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
+                            }`}
+                            title="Indiquer ? si l'Elo de l'adversaire est inconnu ou non classé"
+                          >
+                            Elo ?
+                          </button>
+                        </div>
+                        {opponentEloUnknown ? (
+                          <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 text-amber-900 rounded-lg text-center">
+                            ? (Inconnu)
+                          </div>
+                        ) : (
+                          <input
+                            type="number"
+                            min={600}
+                            max={3500}
+                            value={opponentElo}
+                            onChange={(e) => setOpponentElo(Number(e.target.value))}
+                            required
+                            className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
+                          />
+                        )}
+                      </div>
+
+                      <div className="sm:col-span-3">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Titre FIDE
+                        </label>
+                        <select
+                          value={opponentTitle}
+                          onChange={(e) => setOpponentTitle(e.target.value as FideTitle)}
+                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
+                        >
+                          {FIDE_TITLES.map((t) => (
+                            <option key={t} value={t}>
+                              {t === 'None' ? 'Aucun' : t}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          ID FIDE
+                        </label>
+                        <input
+                          type="text"
+                          value={opponentFideId}
+                          onChange={(e) =>
+                            setOpponentFideId(e.target.value.replace(/[^0-9]/g, ''))
+                          }
+                          placeholder="65104823"
+                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          ID FFE
+                        </label>
+                        <input
+                          type="text"
+                          value={opponentFfeId}
+                          onChange={(e) =>
+                            setOpponentFfeId(e.target.value.toUpperCase())
+                          }
+                          placeholder="K59412"
+                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-4">
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Fédération
+                        </label>
+                        <input
+                          type="text"
+                          maxLength={3}
+                          value={opponentFederation}
+                          onChange={(e) =>
+                            setOpponentFederation(e.target.value.toUpperCase())
+                          }
+                          placeholder="FRA"
+                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
+              )}
 
-              {/* BOUTONS D'ACTION */}
-              <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
+              {/* ÉTAPE 3 : RÉSULTAT, FIN DE PARTIE & VARIATION ELO */}
+              {modalStep === 3 && (
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                      3. Score par rapport à vous & Calcul FIDE
+                    </div>
+
+                    {/* 3 boutons de score clairs */}
+                    <div>
+                      <div className="text-xs font-bold text-slate-900 mb-2">
+                        Résultat de la partie (par rapport à vous) :
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setMyScore(1)}
+                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
+                            myScore === 1
+                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
+                              : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'
+                          }`}
+                        >
+                          <div className="text-xl">🏆</div>
+                          <div className="text-sm font-bold mt-1">1 Victoire</div>
+                          <div className="text-[11px] opacity-80 mt-0.5">
+                            {playerColor === 'White' ? '1-0' : '0-1'}
+                          </div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMyScore(0.5)}
+                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
+                            myScore === 0.5
+                              ? 'bg-amber-500 text-white border-amber-500 shadow-md ring-2 ring-amber-500/20'
+                              : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
+                          }`}
+                        >
+                          <div className="text-xl">🤝</div>
+                          <div className="text-sm font-bold mt-1">1/2 Nulle</div>
+                          <div className="text-[11px] opacity-80 mt-0.5">1/2 - 1/2</div>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setMyScore(0)}
+                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
+                            myScore === 0
+                              ? 'bg-rose-600 text-white border-rose-600 shadow-md ring-2 ring-rose-600/20'
+                              : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
+                          }`}
+                        >
+                          <div className="text-xl">❌</div>
+                          <div className="text-sm font-bold mt-1">0 Défaite</div>
+                          <div className="text-[11px] opacity-80 mt-0.5">
+                            {playerColor === 'White' ? '0-1' : '1-0'}
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Bloc calcul Elo et override */}
+                    <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
+                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
+                        <div>
+                          <div className="font-bold text-slate-900 text-sm">
+                            Variation FIDE Elo calculée
+                          </div>
+                          <div className="text-[11px] text-slate-500">
+                            {isFriendlyMode
+                              ? 'Mode amical actif : variation nulle (0) sur le classement officiel.'
+                              : opponentEloUnknown
+                              ? 'Adversaire non classé (?) : aucune variation Elo FIDE.'
+                              : `Formule FIDE : Δ = K(${kFactorUsed}) × (Score(${myScore}) - P_e(${expectedScore.toFixed(3)}))`}
+                          </div>
+                        </div>
+
+                        {!isFriendlyMode && !opponentEloUnknown && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (isManualEloOverride) {
+                                setIsManualEloOverride(false);
+                                setManualEloChange('');
+                              } else {
+                                setIsManualEloOverride(true);
+                                setManualEloChange(
+                                  computedEloDelta >= 0
+                                    ? `+${computedEloDelta.toFixed(1)}`
+                                    : computedEloDelta.toFixed(1)
+                                );
+                              }
+                            }}
+                            className="text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
+                          >
+                            {isManualEloOverride
+                              ? 'Calcul auto FIDE'
+                              : 'Modifier manuellement'}
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between pt-1">
+                        <span className="text-xs text-slate-600 font-semibold">
+                          Variation enregistrée :
+                        </span>
+                        <div className="flex items-center gap-2">
+                          {isManualEloOverride ? (
+                            <input
+                              type="text"
+                              value={manualEloChange}
+                              onChange={(e) => setManualEloChange(e.target.value)}
+                              placeholder="+5.0 ou -3.2"
+                              className="w-28 px-2.5 py-1 text-center font-mono font-bold text-sm border-2 border-indigo-400 rounded-lg bg-white"
+                            />
+                          ) : (
+                            <span
+                              className={`font-mono text-base font-bold px-3 py-1 rounded-lg ${
+                                effectiveEloDelta >= 0
+                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
+                                  : 'bg-rose-100 text-rose-900 border border-rose-300'
+                              }`}
+                            >
+                              {effectiveEloDelta >= 0
+                                ? `+${effectiveEloDelta.toFixed(1)}`
+                                : effectiveEloDelta.toFixed(1)}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Ouverture */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <div>
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Catalogue des ouvertures (ECO)
+                        </label>
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const found = ECO_OPENINGS_CATALOG.find(
+                              (o) => o.eco === e.target.value
+                            );
+                            if (found) {
+                              setEcoCode(found.eco);
+                              setOpeningName(found.name);
+                            }
+                          }}
+                          className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900"
+                        >
+                          <option value="">-- Préréglages ECO rapides --</option>
+                          {ECO_OPENINGS_CATALOG.map((o) => (
+                            <option key={o.eco} value={o.eco}>
+                              {o.eco} - {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Nom de l'ouverture
+                        </label>
+                        <input
+                          type="text"
+                          value={openingName}
+                          onChange={(e) => setOpeningName(e.target.value)}
+                          placeholder="Ex: Défense Sicilienne, Najdorf"
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* ÉTAPE 4 : PGN, CHESS.COM, NOTES & RÉCAPITULATIF FINAL */}
+              {modalStep === 4 && (
+                <div className="space-y-4 pt-1">
+                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-amber-600" />
+                      4. PGN, analyse & Récapitulatif
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-semibold text-slate-800">
+                            PGN de la partie (copier/coller)
+                          </label>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              try {
+                                const text = await navigator.clipboard?.readText();
+                                if (text) setPgn(text);
+                              } catch {}
+                            }}
+                            className="text-[10px] font-semibold text-slate-700 hover:text-slate-900 underline cursor-pointer"
+                          >
+                            Coller depuis presse-papier
+                          </button>
+                        </div>
+                        <textarea
+                          rows={3}
+                          value={pgn}
+                          onChange={(e) => setPgn(e.target.value)}
+                          placeholder="1. e4 c5 2. Nf3 d6 3. d4 cxd4..."
+                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block font-semibold text-slate-800 mb-1">
+                          Notes personnelles / Moments clés
+                        </label>
+                        <textarea
+                          rows={3}
+                          value={keyMomentNote}
+                          onChange={(e) => setKeyMomentNote(e.target.value)}
+                          placeholder="Idées d'ouverture, tactiques manquées, finales..."
+                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                        />
+                      </div>
+
+                      <div className="sm:col-span-2">
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-semibold text-slate-800">
+                            Lien d'analyse Chess.com (facultatif)
+                          </label>
+                          {chessComUrl && (
+                            <a
+                              href={chessComUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[11px] font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
+                            >
+                              Tester le lien <ExternalLink className="w-3 h-3" />
+                            </a>
+                          )}
+                        </div>
+                        <input
+                          type="url"
+                          value={chessComUrl}
+                          onChange={(e) => setChessComUrl(e.target.value)}
+                          placeholder="https://www.chess.com/analysis/..."
+                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Grande fiche récapitulative de confirmation */}
+                  <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md space-y-3">
+                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
+                      Récapitulatif de la partie avant enregistrement
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div>
+                        <div className="text-base font-bold flex items-center gap-2">
+                          <span className="text-lg">
+                            {playerColor === 'White' ? '♔ Blancs' : '♚ Noirs'}
+                          </span>
+                          <span>vs</span>
+                          <span className="text-amber-300">
+                            {opponentTitle !== 'None' ? `[${opponentTitle}] ` : ''}
+                            {formatPlayerNameLastFirst(
+                              opponentName || (opponentNameUncertain ? 'INCONNU' : 'Adversaire')
+                            )}
+                          </span>
+                          {opponentNameUncertain && (
+                            <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded font-mono">
+                              ?
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-300 mt-1">
+                          {tournamentId === FREE_GAME_TOURNAMENT_ID
+                            ? 'Partie libre'
+                            : tournaments.find((t) => t.id === tournamentId)?.name || 'Tournoi'}{' '}
+                          · Ronde {round} · Cadence {timeControl} · {datePlayed}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 shrink-0 font-mono">
+                        <span
+                          className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                            myScore === 1
+                              ? 'bg-emerald-500 text-slate-950'
+                              : myScore === 0.5
+                              ? 'bg-amber-400 text-slate-950'
+                              : 'bg-rose-500 text-white'
+                          }`}
+                        >
+                          {myScore === 1 ? '1 Victoire' : myScore === 0.5 ? '1/2 Nulle' : '0 Défaite'}
+                        </span>
+
+                        {!isFriendlyMode && (
+                          <span
+                            className={`px-2.5 py-1 rounded-lg text-sm font-bold ${
+                              effectiveEloDelta >= 0
+                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                                : 'bg-rose-950 text-rose-300 border border-rose-700'
+                            }`}
+                          >
+                            {effectiveEloDelta >= 0
+                              ? `+${effectiveEloDelta.toFixed(1)}`
+                              : effectiveEloDelta.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Barre de navigation Stepper */}
+              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 rounded-xl cursor-pointer"
+                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
                 >
                   Annuler
                 </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-2.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-xl shadow-md transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
-                >
-                  <Check className="w-4 h-4" />
-                  {isSubmitting ? 'Enregistrement...' : 'Enregistrer la partie'}
-                </button>
+
+                <div className="flex items-center gap-2">
+                  {modalStep > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setModalStep((s) => (s - 1) as 1 | 2 | 3)}
+                      className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
+                    >
+                      ← Précédent
+                    </button>
+                  )}
+
+                  {modalStep < 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (modalStep === 2 && !opponentName.trim() && !opponentNameUncertain) {
+                          alert("Veuillez renseigner le nom de l'adversaire ou cocher Nom incertain (?).");
+                          return;
+                        }
+                        setModalStep((s) => (s + 1) as 2 | 3 | 4);
+                      }}
+                      className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-800 cursor-pointer"
+                    >
+                      Suivant →
+                    </button>
+                  ) : (
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="px-6 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                    >
+                      <Check className="w-4 h-4" />
+                      {isSubmitting ? 'Enregistrement...' : '✓ Confirmer & Enregistrer'}
+                    </button>
+                  )}
+                </div>
               </div>
             </form>
           </div>
