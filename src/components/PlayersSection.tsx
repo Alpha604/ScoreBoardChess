@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Edit3,
   ExternalLink,
@@ -88,7 +88,20 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
   const [club, setClub] = useState('');
   const [notes, setNotes] = useState('');
   const [modalStep, setModalStep] = useState<1 | 2 | 3>(1);
+  const [canConfirmSave, setCanConfirmSave] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (modalStep === 3) {
+      setCanConfirmSave(false);
+      const timer = setTimeout(() => {
+        setCanConfirmSave(true);
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      setCanConfirmSave(false);
+    }
+  }, [modalStep]);
 
   // Modale de confirmation de suppression (3s)
   const [opponentToDelete, setOpponentToDelete] = useState<OpponentPlayer | null>(null);
@@ -262,8 +275,9 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
     setIsModalOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (modalStep !== 3) return;
     if (!name.trim()) return;
     setIsSubmitting(true);
     try {
@@ -912,7 +926,17 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
+              }}
+              className="space-y-4 text-xs"
+            >
               {/* ÉTAPE 1 : IDENTITÉ, TITRE & CLUBS */}
               {modalStep === 1 && (
                 <div className="space-y-4 pt-1">
@@ -1273,9 +1297,10 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                     </button>
                   ) : (
                     <button
-                      type="submit"
-                      disabled={isSubmitting || !name.trim()}
-                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg disabled:opacity-50 cursor-pointer shadow-xs"
+                      type="button"
+                      disabled={isSubmitting || !canConfirmSave || !name.trim()}
+                      onClick={() => handleSubmit()}
+                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs"
                     >
                       {isSubmitting ? 'Enregistrement...' : '✓ Confirmer & Enregistrer'}
                     </button>

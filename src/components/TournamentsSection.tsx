@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  Check,
   Edit3,
   ExternalLink,
   FileText,
@@ -136,6 +137,20 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
   const [normTarget, setNormTarget] = useState('');
   const [notes, setNotes] = useState('');
   const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
+  const [canConfirmSave, setCanConfirmSave] = useState(false);
+
+  // Sécurité anti-sauvegarde automatique : empêche tout double-clic ou validation involontaire à l'étape 4
+  useEffect(() => {
+    if (modalStep === 4) {
+      setCanConfirmSave(false);
+      const timer = setTimeout(() => {
+        setCanConfirmSave(true);
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      setCanConfirmSave(false);
+    }
+  }, [modalStep]);
 
   // Rondes saisies directement lors de la création d'un tournoi
   const [draftGames, setDraftGames] = useState<DraftRoundGame[]>([]);
@@ -475,8 +490,9 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     }
   };
 
-  const handleSubmitTournament = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleExplicitSaveTournament = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (modalStep !== 4) return;
     if (!name.trim()) return;
     setIsSubmitting(true);
 
@@ -1567,7 +1583,17 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmitTournament} className="space-y-6 text-xs">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
+              }}
+              className="space-y-6 text-xs"
+            >
               {/* ÉTAPE 1 : INFOS GÉNÉRALES & CADENCE */}
               {modalStep === 1 && (
                 <div className="space-y-4">
@@ -2154,9 +2180,21 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
               {/* ÉTAPE 4 : RÉCAPITULATIF & CONFIRMATION */}
               {modalStep === 4 && (
                 <div className="space-y-4">
+                  <div className="p-3.5 bg-blue-50 border border-blue-200 rounded-lg text-blue-950 text-xs flex items-start gap-2.5">
+                    <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                    <div className="space-y-1">
+                      <div className="font-bold text-blue-900">
+                        Vérification finale avant enregistrement
+                      </div>
+                      <p className="text-[11px] text-blue-800 leading-relaxed">
+                        Aucune modification n'est enregistrée automatiquement. Prenez le temps de relire les informations ci-dessous, puis cliquez sur <strong>« Confirmer et enregistrer »</strong> pour valider la sauvegarde.
+                      </p>
+                    </div>
+                  </div>
+
                   <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-3">
                     <h3 className="text-xs font-bold uppercase tracking-wider text-slate-900">
-                      Récapitulatif avant enregistrement
+                      Récapitulatif des paramètres
                     </h3>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
@@ -2252,10 +2290,12 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                     </button>
                   ) : (
                     <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md disabled:opacity-50 cursor-pointer shadow-xs"
+                      type="button"
+                      disabled={isSubmitting || !canConfirmSave}
+                      onClick={() => handleExplicitSaveTournament()}
+                      className="px-5 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-md disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer shadow-xs flex items-center gap-1.5 transition-colors"
                     >
+                      <Check className="w-4 h-4" />
                       {isSubmitting
                         ? 'Enregistrement...'
                         : editingId

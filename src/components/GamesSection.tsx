@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Check,
   Copy,
@@ -135,7 +135,20 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   const [chessComUrl, setChessComUrl] = useState('');
   const [keyMomentNote, setKeyMomentNote] = useState('');
   const [modalStep, setModalStep] = useState<1 | 2 | 3 | 4>(1);
+  const [canConfirmSave, setCanConfirmSave] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (modalStep === 4) {
+      setCanConfirmSave(false);
+      const timer = setTimeout(() => {
+        setCanConfirmSave(true);
+      }, 350);
+      return () => clearTimeout(timer);
+    } else {
+      setCanConfirmSave(false);
+    }
+  }, [modalStep]);
 
   // Variation Elo : calcul automatique FIDE avec possibilité de modification manuelle
   const [manualEloChange, setManualEloChange] = useState<string>('');
@@ -396,8 +409,9 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     return found ? found.id : null;
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (modalStep !== 4) return;
     const isFree =
       !tournamentId || tournamentId === FREE_GAME_TOURNAMENT_ID;
     const chosenTourney = isFree
@@ -1177,7 +1191,17 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-5 text-xs">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                }
+              }}
+              className="space-y-5 text-xs"
+            >
               {/* ÉTAPE 1 : CADRE, CADENCE & MA COULEUR */}
               {modalStep === 1 && (
                 <div className="space-y-4 pt-1">
@@ -1895,9 +1919,10 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     </button>
                   ) : (
                     <button
-                      type="submit"
-                      disabled={isSubmitting}
-                      className="px-6 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 rounded-lg shadow-sm transition-all cursor-pointer disabled:opacity-50 flex items-center gap-2"
+                      type="button"
+                      disabled={isSubmitting || !canConfirmSave}
+                      onClick={() => handleSubmit()}
+                      className="px-6 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2"
                     >
                       <Check className="w-4 h-4" />
                       {isSubmitting ? 'Enregistrement...' : '✓ Confirmer & Enregistrer'}
