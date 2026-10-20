@@ -195,10 +195,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     opp: OpponentPlayer,
     tc: TimeControlCategory
   ) => {
-    const std = Number(opp.standardElo) || Number(opp.elo) || 1500;
-    if (tc === 'Rapid') return Number(opp.rapidElo) || std;
-    if (tc === 'Blitz') return Number(opp.blitzElo) || std;
-    return std;
+    if (isOpponentEloUnknownForCadence(opp, tc)) return 0;
+    if (tc === 'Rapid') return Number(opp.rapidElo) || 0;
+    if (tc === 'Blitz') return Number(opp.blitzElo) || 0;
+    return Number(opp.standardElo) || Number(opp.elo) || 0;
   };
 
   const isOpponentEloUnknownForCadence = (
@@ -206,9 +206,27 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
     tc: TimeControlCategory
   ) => {
     if (opp.isEloUnknown) return true;
-    if (tc === 'Rapid') return Boolean(opp.isRapidEloUnknown);
-    if (tc === 'Blitz') return Boolean(opp.isBlitzEloUnknown);
-    return Boolean(opp.isStandardEloUnknown);
+    if (tc === 'Rapid') {
+      return (
+        Boolean(opp.isRapidEloUnknown) ||
+        opp.rapidElo === undefined ||
+        opp.rapidElo === null ||
+        Number(opp.rapidElo) <= 0
+      );
+    }
+    if (tc === 'Blitz') {
+      return (
+        Boolean(opp.isBlitzEloUnknown) ||
+        opp.blitzElo === undefined ||
+        opp.blitzElo === null ||
+        Number(opp.blitzElo) <= 0
+      );
+    }
+    return (
+      Boolean(opp.isStandardEloUnknown) ||
+      (!opp.standardElo && !opp.elo) ||
+      Number(opp.standardElo || opp.elo) <= 0
+    );
   };
 
   const enrichedTournaments = useMemo(() => {

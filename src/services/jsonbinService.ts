@@ -269,6 +269,10 @@ export function syncOpponentsWithGames(
       const isUnknownElo =
         Boolean(g.opponentEloUnknown) || Number(g.opponentElo) <= 0;
       const gameElo = isUnknownElo ? 0 : Number(g.opponentElo) || 1500;
+      const isStd = g.timeControl === 'Standard';
+      const isRap = g.timeControl === 'Rapid';
+      const isBlz = g.timeControl === 'Blitz';
+
       list.push({
         id:
           g.opponentId ||
@@ -277,14 +281,14 @@ export function syncOpponentsWithGames(
         isNameUncertain: isUncertain,
         fideId: cleanFide,
         ffeId: cleanFfe,
-        elo: gameElo,
-        standardElo: gameElo,
-        rapidElo: gameElo,
-        blitzElo: gameElo,
-        isEloUnknown: isUnknownElo,
-        isStandardEloUnknown: isUnknownElo,
-        isRapidEloUnknown: isUnknownElo,
-        isBlitzEloUnknown: isUnknownElo,
+        elo: isStd ? gameElo : 0,
+        standardElo: isStd ? gameElo : 0,
+        rapidElo: isRap ? gameElo : 0,
+        blitzElo: isBlz ? gameElo : 0,
+        isEloUnknown: isUnknownElo && (isStd || isRap || isBlz),
+        isStandardEloUnknown: isStd ? isUnknownElo : true,
+        isRapidEloUnknown: isRap ? isUnknownElo : true,
+        isBlitzEloUnknown: isBlz ? isUnknownElo : true,
         title: g.opponentTitle || 'None',
         federation: g.opponentFederation || 'FRA',
         club: '',

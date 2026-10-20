@@ -141,13 +141,30 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
             oppGames.reduce((acc, g) => acc + g.eloChange, 0) * 10
           ) / 10;
 
-      const stdUnknown = Boolean(opp.isStandardEloUnknown || opp.isEloUnknown);
-      const rapUnknown = Boolean(opp.isRapidEloUnknown || opp.isEloUnknown);
-      const blzUnknown = Boolean(opp.isBlitzEloUnknown || opp.isEloUnknown);
+      const stdUnknown = Boolean(
+        opp.isStandardEloUnknown ||
+        opp.isEloUnknown ||
+        (!opp.standardElo && !opp.elo) ||
+        Number(opp.standardElo || opp.elo) <= 0
+      );
+      const rapUnknown = Boolean(
+        opp.isRapidEloUnknown ||
+        opp.isEloUnknown ||
+        opp.rapidElo === undefined ||
+        opp.rapidElo === null ||
+        Number(opp.rapidElo) <= 0
+      );
+      const blzUnknown = Boolean(
+        opp.isBlitzEloUnknown ||
+        opp.isEloUnknown ||
+        opp.blitzElo === undefined ||
+        opp.blitzElo === null ||
+        Number(opp.blitzElo) <= 0
+      );
 
-      const stdElo = Number(opp.standardElo) || Number(opp.elo) || 1500;
-      const rapElo = Number(opp.rapidElo) || stdElo;
-      const blzElo = Number(opp.blitzElo) || stdElo;
+      const stdElo = stdUnknown ? 0 : Number(opp.standardElo) || Number(opp.elo) || 0;
+      const rapElo = rapUnknown ? 0 : Number(opp.rapidElo) || 0;
+      const blzElo = blzUnknown ? 0 : Number(opp.blitzElo) || 0;
       const uncertainName = Boolean(
         opp.isNameUncertain || hasQuestionMarkName(opp.name)
       );
@@ -239,10 +256,10 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
     setFfeId('');
     setStandardElo(1600);
     setIsStandardEloUnknown(false);
-    setRapidElo(1600);
-    setIsRapidEloUnknown(false);
-    setBlitzElo(1600);
-    setIsBlitzEloUnknown(false);
+    setRapidElo(0);
+    setIsRapidEloUnknown(true);
+    setBlitzElo(0);
+    setIsBlitzEloUnknown(true);
     setTitle('None');
     setFederation('FRA');
     setClub('');
@@ -252,21 +269,39 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
   };
 
   const openEditModal = (opp: OpponentPlayer) => {
-    const std = Number(opp.standardElo) || Number(opp.elo) || 1500;
+    const std = Number(opp.standardElo) || Number(opp.elo) || 0;
     const uncertain = Boolean(
       opp.isNameUncertain || hasQuestionMarkName(opp.name)
     );
+    const stdUnknown = Boolean(
+      opp.isStandardEloUnknown || opp.isEloUnknown || std <= 0
+    );
+    const rapUnknown = Boolean(
+      opp.isRapidEloUnknown ||
+      opp.isEloUnknown ||
+      opp.rapidElo === undefined ||
+      opp.rapidElo === null ||
+      Number(opp.rapidElo) <= 0
+    );
+    const blzUnknown = Boolean(
+      opp.isBlitzEloUnknown ||
+      opp.isEloUnknown ||
+      opp.blitzElo === undefined ||
+      opp.blitzElo === null ||
+      Number(opp.blitzElo) <= 0
+    );
+
     setEditingOpponentId(opp.id);
     setName(formatPlayerNameLastFirst(opp.name));
     setIsNameUncertain(uncertain);
     setFideId(opp.fideId);
     setFfeId(opp.ffeId);
-    setStandardElo(std);
-    setIsStandardEloUnknown(Boolean(opp.isStandardEloUnknown || opp.isEloUnknown));
-    setRapidElo(Number(opp.rapidElo) || std);
-    setIsRapidEloUnknown(Boolean(opp.isRapidEloUnknown || opp.isEloUnknown));
-    setBlitzElo(Number(opp.blitzElo) || std);
-    setIsBlitzEloUnknown(Boolean(opp.isBlitzEloUnknown || opp.isEloUnknown));
+    setStandardElo(stdUnknown ? 1600 : std);
+    setIsStandardEloUnknown(stdUnknown);
+    setRapidElo(rapUnknown ? 0 : Number(opp.rapidElo));
+    setIsRapidEloUnknown(rapUnknown);
+    setBlitzElo(blzUnknown ? 0 : Number(opp.blitzElo));
+    setIsBlitzEloUnknown(blzUnknown);
     setTitle(opp.title);
     setFederation(opp.federation || 'FRA');
     setClub(opp.club || '');
@@ -284,16 +319,19 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
       const uncertain = isNameUncertain || hasQuestionMarkName(name);
       const allUnknown =
         isStandardEloUnknown && isRapidEloUnknown && isBlitzEloUnknown;
+      const stdNum = isStandardEloUnknown ? 0 : Number(standardElo) || 0;
+      const rapNum = isRapidEloUnknown ? 0 : Number(rapidElo) || 0;
+      const blzNum = isBlitzEloUnknown ? 0 : Number(blitzElo) || 0;
       await onSaveOpponent(
         {
           name: formatPlayerNameLastFirst(name),
           isNameUncertain: uncertain,
           fideId,
           ffeId,
-          elo: Number(standardElo) || 1500,
-          standardElo: Number(standardElo) || 1500,
-          rapidElo: Number(rapidElo) || 1500,
-          blitzElo: Number(blitzElo) || 1500,
+          elo: stdNum,
+          standardElo: stdNum,
+          rapidElo: rapNum,
+          blitzElo: blzNum,
           isEloUnknown: allUnknown,
           isStandardEloUnknown,
           isRapidEloUnknown,
@@ -1063,20 +1101,28 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                           Classements Elo par cadence
                         </div>
                         <p className="text-[11px] text-slate-500">
-                          Saisissez le classement officiel ou cochez « ? » si inconnu.
+                          Chaque cadence est indépendante : renseigner le Classique ne modifie pas le Rapide ou le Blitz (affichés avec « ? »).
                         </p>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
-                          const next = !(
+                          const allUnknown =
                             isStandardEloUnknown &&
                             isRapidEloUnknown &&
-                            isBlitzEloUnknown
-                          );
-                          setIsStandardEloUnknown(next);
-                          setIsRapidEloUnknown(next);
-                          setIsBlitzEloUnknown(next);
+                            isBlitzEloUnknown;
+                          if (allUnknown) {
+                            setIsStandardEloUnknown(false);
+                            if (!standardElo || standardElo <= 0) setStandardElo(1600);
+                            setIsRapidEloUnknown(false);
+                            if (!rapidElo || rapidElo <= 0) setRapidElo(1500);
+                            setIsBlitzEloUnknown(false);
+                            if (!blitzElo || blitzElo <= 0) setBlitzElo(1500);
+                          } else {
+                            setIsStandardEloUnknown(true);
+                            setIsRapidEloUnknown(true);
+                            setIsBlitzEloUnknown(true);
+                          }
                         }}
                         className="text-[11px] font-semibold text-slate-800 bg-white hover:bg-slate-100 border border-slate-300 px-2.5 py-1 rounded-md cursor-pointer transition-colors"
                       >
@@ -1099,9 +1145,13 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                             <input
                               type="checkbox"
                               checked={isStandardEloUnknown}
-                              onChange={(e) =>
-                                setIsStandardEloUnknown(e.target.checked)
-                              }
+                              onChange={(e) => {
+                                const nextVal = e.target.checked;
+                                setIsStandardEloUnknown(nextVal);
+                                if (!nextVal && (!standardElo || standardElo <= 0)) {
+                                  setStandardElo(1600);
+                                }
+                              }}
                               className="rounded border-slate-300"
                             />
                             Inconnu ?
@@ -1132,7 +1182,13 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                             <input
                               type="checkbox"
                               checked={isRapidEloUnknown}
-                              onChange={(e) => setIsRapidEloUnknown(e.target.checked)}
+                              onChange={(e) => {
+                                const nextVal = e.target.checked;
+                                setIsRapidEloUnknown(nextVal);
+                                if (!nextVal && (!rapidElo || rapidElo <= 0)) {
+                                  setRapidElo(1500);
+                                }
+                              }}
                               className="rounded border-slate-300"
                             />
                             Inconnu ?
@@ -1162,7 +1218,13 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                             <input
                               type="checkbox"
                               checked={isBlitzEloUnknown}
-                              onChange={(e) => setIsBlitzEloUnknown(e.target.checked)}
+                              onChange={(e) => {
+                                const nextVal = e.target.checked;
+                                setIsBlitzEloUnknown(nextVal);
+                                if (!nextVal && (!blitzElo || blitzElo <= 0)) {
+                                  setBlitzElo(1500);
+                                }
+                              }}
                               className="rounded border-slate-300"
                             />
                             Inconnu ?

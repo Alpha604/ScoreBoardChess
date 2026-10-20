@@ -126,12 +126,26 @@ export function isOpponentEloUnknownForCadence(
 ): boolean {
   if (opp.isEloUnknown) return true;
   if (cadence === 'Rapid') {
-    return Boolean(opp.isRapidEloUnknown) || Number(opp.rapidElo) <= 0;
+    return (
+      Boolean(opp.isRapidEloUnknown) ||
+      opp.rapidElo === undefined ||
+      opp.rapidElo === null ||
+      Number(opp.rapidElo) <= 0
+    );
   }
   if (cadence === 'Blitz') {
-    return Boolean(opp.isBlitzEloUnknown) || Number(opp.blitzElo) <= 0;
+    return (
+      Boolean(opp.isBlitzEloUnknown) ||
+      opp.blitzElo === undefined ||
+      opp.blitzElo === null ||
+      Number(opp.blitzElo) <= 0
+    );
   }
-  return Boolean(opp.isStandardEloUnknown) || Number(opp.standardElo || opp.elo) <= 0;
+  return (
+    Boolean(opp.isStandardEloUnknown) ||
+    (!opp.standardElo && !opp.elo) ||
+    Number(opp.standardElo || opp.elo) <= 0
+  );
 }
 
 export function getOpponentEloForCadence(
@@ -152,12 +166,12 @@ export function getOpponentEloForCadence(
     return 0;
   }
   if (cadence === 'Rapid') {
-    return Number(opp.rapidElo) || Number(opp.standardElo) || Number(opp.elo) || 1500;
+    return Number(opp.rapidElo) || 0;
   }
   if (cadence === 'Blitz') {
-    return Number(opp.blitzElo) || Number(opp.standardElo) || Number(opp.elo) || 1500;
+    return Number(opp.blitzElo) || 0;
   }
-  return Number(opp.standardElo) || Number(opp.elo) || 1500;
+  return Number(opp.standardElo) || Number(opp.elo) || 0;
 }
 
 export function formatEloDisplay(
@@ -286,11 +300,15 @@ export function sanitizeOpponentPayload(
   const isRapidEloUnknown =
     isEloUnknown ||
     Boolean(input.isRapidEloUnknown) ||
-    Number(input.rapidElo ?? input.standardElo ?? input.elo) <= 0;
+    input.rapidElo === undefined ||
+    input.rapidElo === null ||
+    Number(input.rapidElo) <= 0;
   const isBlitzEloUnknown =
     isEloUnknown ||
     Boolean(input.isBlitzEloUnknown) ||
-    Number(input.blitzElo ?? input.standardElo ?? input.elo) <= 0;
+    input.blitzElo === undefined ||
+    input.blitzElo === null ||
+    Number(input.blitzElo) <= 0;
 
   const standardElo = isStandardEloUnknown
     ? 0
@@ -300,22 +318,12 @@ export function sanitizeOpponentPayload(
   const rapidElo = isRapidEloUnknown
     ? 0
     : Math.round(
-        clampNumber(
-          Number(input.rapidElo ?? (standardElo || 1500)),
-          600,
-          3500,
-          standardElo || 1500
-        )
+        clampNumber(Number(input.rapidElo), 600, 3500, 0)
       );
   const blitzElo = isBlitzEloUnknown
     ? 0
     : Math.round(
-        clampNumber(
-          Number(input.blitzElo ?? (standardElo || 1500)),
-          600,
-          3500,
-          standardElo || 1500
-        )
+        clampNumber(Number(input.blitzElo), 600, 3500, 0)
       );
 
   return {
