@@ -11,12 +11,14 @@ import {
   X,
 } from 'lucide-react';
 import { FideGame, FideTitle, OpponentPlayer } from '../types/fide';
+import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import {
   formatPlayerNameDisplay,
   formatPlayerNameLastFirst,
   hasQuestionMarkName,
 } from '../utils/fideValidation';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { FederationFlag } from './FederationFlag';
 
 interface PlayersSectionProps {
   opponents: OpponentPlayer[];
@@ -456,6 +458,10 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                   >
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
+                        <FederationFlag
+                          code={opp.federation || 'FRA'}
+                          size="xs"
+                        />
                         {opp.title !== 'None' && (
                           <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">
                             {opp.title}
@@ -598,8 +604,14 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                   <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 font-semibold">
                     ID FFE : {selectedOpponent.ffeId || 'Non renseigné'}
                   </span>
-                  <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 font-semibold">
-                    Fédération : {selectedOpponent.federation || 'FRA'}
+                  <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 font-semibold inline-flex items-center gap-1.5">
+                    Fédération :{' '}
+                    <FederationFlag
+                      code={selectedOpponent.federation || 'FRA'}
+                      size="xs"
+                      showCode
+                      showName
+                    />
                   </span>
                   {selectedOpponent.club && (
                     <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-700 font-sans font-semibold">
@@ -1075,17 +1087,61 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block font-bold text-slate-800 mb-1">
-                        Fédération
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block font-bold text-slate-800">
+                          Fédération
+                        </label>
+                        <FederationFlag
+                          code={federation}
+                          size="xs"
+                          title="Aperçu du drapeau"
+                        />
+                      </div>
                       <input
                         type="text"
-                        maxLength={3}
+                        maxLength={4}
                         value={federation}
                         onChange={(e) => setFederation(e.target.value.toUpperCase())}
-                        placeholder="FRA"
-                        className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-lg"
+                        placeholder="FRA ou FIDE"
+                        className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-lg focus:outline-none focus:border-slate-900"
                       />
+                      <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-1 rounded-md">
+                        <FederationFlag code={federation} size="sm" />
+                        <span className="font-semibold truncate">
+                          {federation === 'FIDE'
+                            ? 'FIDE (Drapeau officiel)'
+                            : POPULAR_FEDERATIONS.find(
+                                (f) => f.code === federation.toUpperCase()
+                              )?.name || federation}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Boutons de sélection rapide de la fédération */}
+                  <div className="pt-1">
+                    <div className="text-[11px] font-semibold text-slate-500 mb-1.5">
+                      Fédérations courantes (clic rapide) :
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {POPULAR_FEDERATIONS.slice(0, 10).map((fed) => {
+                        const active = federation === fed.code;
+                        return (
+                          <button
+                            key={fed.code}
+                            type="button"
+                            onClick={() => setFederation(fed.code)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border cursor-pointer transition-colors ${
+                              active
+                                ? 'bg-slate-900 text-white border-slate-900'
+                                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                            }`}
+                          >
+                            <FederationFlag code={fed.code} size="xs" />
+                            <span>{fed.code}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1289,7 +1345,15 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
                         <div className="text-xs text-slate-600 mt-1 flex flex-wrap gap-2">
                           <span>Club : {club || 'Non renseigné'}</span>
                           <span>·</span>
-                          <span>Fédération : {federation || 'FRA'}</span>
+                          <span className="inline-flex items-center gap-1.5">
+                            <span>Fédération :</span>
+                            <FederationFlag
+                              code={federation || 'FRA'}
+                              size="xs"
+                              showCode
+                              showName
+                            />
+                          </span>
                           <span>·</span>
                           <span>FIDE : {fideId || '—'}</span>
                           <span>·</span>

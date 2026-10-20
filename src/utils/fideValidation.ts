@@ -76,7 +76,7 @@ export function sanitizePlayerProfilePayload(
   const fed = (input.federation || 'FRA')
     .toUpperCase()
     .replace(/[^A-Z]/g, '')
-    .slice(0, 3);
+    .slice(0, 4);
   const rawFideId = (input.fideId || '').replace(/[^0-9]/g, '').slice(0, 20);
   const rawFfeId = (input.ffeId || '')
     .toUpperCase()
@@ -351,7 +351,7 @@ export function sanitizeOpponentPayload(
       (input.federation || 'FRA')
         .toUpperCase()
         .replace(/[^A-Z]/g, '')
-        .slice(0, 3) || 'FRA',
+        .slice(0, 4) || 'FRA',
     club: sanitizeString(input.club, 100, ''),
     notes: sanitizeString(input.notes, 1000, ''),
   };
@@ -418,7 +418,7 @@ export function sanitizeFideGamePayload(
     (input.opponentFederation || 'FRA')
       .toUpperCase()
       .replace(/[^A-Z]/g, '')
-      .slice(0, 3) || 'FRA';
+      .slice(0, 4) || 'FRA';
   const res = VALID_RESULTS.includes(input.result) ? input.result : '1/2-1/2';
   const score = getPlayerScoreFromResult(res, color);
   const validK = VALID_K.includes(input.kFactorUsed) ? input.kFactorUsed : 20;

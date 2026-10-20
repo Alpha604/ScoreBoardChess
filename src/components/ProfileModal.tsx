@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { X } from 'lucide-react';
 import { FideTitle, PlayerProfile } from '../types/fide';
+import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
+import { FederationFlag } from './FederationFlag';
 
 interface ProfileModalProps {
   profile: PlayerProfile | null;
@@ -121,17 +123,31 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-semibold text-slate-700 mb-1">
-                Fédération
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block font-semibold text-slate-700">
+                  Fédération
+                </label>
+                <FederationFlag code={federation} size="xs" />
+              </div>
               <input
                 type="text"
-                maxLength={3}
+                maxLength={4}
                 value={federation}
                 onChange={(e) => setFederation(e.target.value.toUpperCase())}
                 required
-                className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-xl"
+                placeholder="FRA ou FIDE"
+                className="w-full px-3 py-2 font-mono uppercase border border-slate-300 rounded-xl focus:outline-none focus:border-slate-900"
               />
+              <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
+                <FederationFlag code={federation} size="xs" />
+                <span className="truncate">
+                  {federation === 'FIDE'
+                    ? 'FIDE'
+                    : POPULAR_FEDERATIONS.find(
+                        (f) => f.code === federation.toUpperCase()
+                      )?.name || federation}
+                </span>
+              </div>
             </div>
             <div>
               <label className="block font-semibold text-slate-700 mb-1">Titre FIDE</label>

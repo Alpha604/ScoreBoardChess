@@ -33,6 +33,7 @@ import {
   hasQuestionMarkName,
 } from '../utils/fideValidation';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { FederationFlag } from './FederationFlag';
 
 interface TournamentsSectionProps {
   tournaments: Tournament[];
@@ -1397,6 +1398,10 @@ export const TournamentsSection: React.FC<TournamentsSectionProps> = ({
                                     {g.opponentTitle}
                                   </span>
                                 )}
+                                <FederationFlag
+                                  code={matchedOpponent?.federation || g.opponentFederation || 'FRA'}
+                                  size="xs"
+                                />
                                 <span>
                                   {formatPlayerNameLastFirst(g.opponentName)}
                                 </span>

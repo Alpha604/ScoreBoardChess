@@ -21,6 +21,7 @@ import {
   Users,
 } from 'lucide-react';
 import { EloEvolutionChart } from './components/EloEvolutionChart';
+import { FederationFlag } from './components/FederationFlag';
 import { FriendlySection } from './components/FriendlySection';
 import { GamesSection } from './components/GamesSection';
 import { LoginSection } from './components/LoginSection';
@@ -1189,8 +1190,12 @@ export default function App() {
             className="w-full text-left p-3 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 transition-colors cursor-pointer space-y-2"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-white truncate">
-                {profile?.displayName || 'Mon Profil'}
+              <span className="text-xs font-bold text-white truncate flex items-center gap-1.5">
+                <FederationFlag
+                  code={profile?.federation || 'FRA'}
+                  size="xs"
+                />
+                <span className="truncate">{profile?.displayName || 'Mon Profil'}</span>
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">
                 K={profile?.kFactor || 20}

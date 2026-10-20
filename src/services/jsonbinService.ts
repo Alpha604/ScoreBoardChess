@@ -404,25 +404,32 @@ function normalizeOpponentsArray(rawOpps: unknown): OpponentPlayer[] {
     const isStandardEloUnknown =
       isEloUnknown ||
       Boolean(o.isStandardEloUnknown) ||
-      (o.standardElo !== undefined && Number(o.standardElo) <= 0);
+      (o.standardElo === undefined && o.elo === undefined) ||
+      (Number(o.standardElo ?? o.elo) <= 0);
+
     const isRapidEloUnknown =
       isEloUnknown ||
       Boolean(o.isRapidEloUnknown) ||
-      (o.rapidElo !== undefined && Number(o.rapidElo) <= 0);
+      o.rapidElo === undefined ||
+      o.rapidElo === null ||
+      Number(o.rapidElo) <= 0;
+
     const isBlitzEloUnknown =
       isEloUnknown ||
       Boolean(o.isBlitzEloUnknown) ||
-      (o.blitzElo !== undefined && Number(o.blitzElo) <= 0);
+      o.blitzElo === undefined ||
+      o.blitzElo === null ||
+      Number(o.blitzElo) <= 0;
 
     const stdElo = isStandardEloUnknown
       ? 0
-      : Number(o.standardElo) || Number(o.elo) || 1500;
+      : Number(o.standardElo ?? o.elo) || 0;
     const rapidElo = isRapidEloUnknown
       ? 0
-      : Number(o.rapidElo) || stdElo || 1500;
+      : Number(o.rapidElo) || 0;
     const blitzElo = isBlitzEloUnknown
       ? 0
-      : Number(o.blitzElo) || stdElo || 1500;
+      : Number(o.blitzElo) || 0;
 
     return {
       id: o.id || `opp_${idx + 1}`,

@@ -45,7 +45,9 @@ import {
   sortOpponentsAlphabetically,
   stripQuestionMarkFromName,
 } from '../utils/fideValidation';
+import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { FederationFlag } from './FederationFlag';
 
 interface GamesSectionProps {
   games: FideGame[];
@@ -683,6 +685,10 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
                       <td className="py-3 px-4">
                         <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                          <FederationFlag
+                            code={g.opponentFederation || 'FRA'}
+                            size="xs"
+                          />
                           <span>{displayOppName}</span>
                         </div>
                         <div className="text-xs text-slate-500">
@@ -955,8 +961,14 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     {inspectedGame.opponentFfeId && (
                       <div>ID FFE : {inspectedGame.opponentFfeId}</div>
                     )}
-                    <div>
-                      Fédération : {inspectedGame.opponentFederation || 'FRA'}
+                    <div className="flex items-center gap-1.5">
+                      <span>Fédération :</span>
+                      <FederationFlag
+                        code={inspectedGame.opponentFederation || 'FRA'}
+                        size="xs"
+                        showCode
+                        showName
+                      />
                     </div>
                   </div>
                   {findOpponentRecordId(inspectedGame) && (
@@ -1542,19 +1554,63 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       </div>
 
                       <div className="sm:col-span-4">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Fédération
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="font-semibold text-slate-800">
+                            Fédération
+                          </label>
+                          <FederationFlag
+                            code={opponentFederation}
+                            size="xs"
+                            title="Aperçu du drapeau"
+                          />
+                        </div>
                         <input
                           type="text"
-                          maxLength={3}
+                          maxLength={4}
                           value={opponentFederation}
                           onChange={(e) =>
                             setOpponentFederation(e.target.value.toUpperCase())
                           }
-                          placeholder="FRA"
-                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
+                          placeholder="FRA ou FIDE"
+                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-slate-900"
                         />
+                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
+                          <FederationFlag code={opponentFederation} size="xs" />
+                          <span className="truncate">
+                            {opponentFederation === 'FIDE'
+                              ? 'FIDE'
+                              : POPULAR_FEDERATIONS.find(
+                                  (f) => f.code === opponentFederation.toUpperCase()
+                                )?.name || opponentFederation}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Fédérations rapides pour l'adversaire */}
+                    <div className="pt-1">
+                      <div className="text-[11px] font-semibold text-slate-500 mb-1">
+                        Fédérations courantes :
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {POPULAR_FEDERATIONS.slice(0, 8).map((fed) => {
+                          const active = opponentFederation === fed.code;
+                          return (
+                            <button
+                              key={fed.code}
+                              type="button"
+                              onClick={() => setOpponentFederation(fed.code)}
+                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border cursor-pointer transition-colors ${
+                                active
+                                  ? 'bg-slate-900 text-white border-slate-900'
+                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                              }`}
+                            >
+                              <FederationFlag code={fed.code} size="xs" />
+                              <span>{fed.code}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
@@ -1830,11 +1886,17 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                             {playerColor === 'White' ? '♔ Blancs' : '♚ Noirs'}
                           </span>
                           <span>vs</span>
-                          <span className="text-amber-300">
-                            {opponentTitle !== 'None' ? `[${opponentTitle}] ` : ''}
-                            {formatPlayerNameLastFirst(
-                              opponentName || (opponentNameUncertain ? 'INCONNU' : 'Adversaire')
-                            )}
+                          <span className="text-amber-300 inline-flex items-center gap-1.5">
+                            <FederationFlag
+                              code={opponentFederation || 'FRA'}
+                              size="xs"
+                            />
+                            <span>
+                              {opponentTitle !== 'None' ? `[${opponentTitle}] ` : ''}
+                              {formatPlayerNameLastFirst(
+                                opponentName || (opponentNameUncertain ? 'INCONNU' : 'Adversaire')
+                              )}
+                            </span>
                           </span>
                           {opponentNameUncertain && (
                             <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded font-mono">
