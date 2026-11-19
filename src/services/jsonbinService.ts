@@ -486,6 +486,15 @@ function normalizeDatabasePayload(raw: unknown): FideLedgerDatabase {
       ? (payload.profile as Partial<PlayerProfile>)
       : DEFAULT_PLAYER_PROFILE;
 
+  const raw2fa = rawProfile.twoFactorAuth;
+  const clean2faSecret =
+    raw2fa && typeof raw2fa.secret === 'string'
+      ? raw2fa.secret
+          .toUpperCase()
+          .replace(/[^A-Z2-7]/g, '')
+          .slice(0, 64)
+      : '';
+
   const profile: PlayerProfile = {
     uid: 'default_player',
     displayName: rawProfile.displayName || DEFAULT_PLAYER_PROFILE.displayName,
@@ -503,6 +512,21 @@ function normalizeDatabasePayload(raw: unknown): FideLedgerDatabase {
     rapidElo: Number(rawProfile.rapidElo) || 1500,
     blitzElo: Number(rawProfile.blitzElo) || 1500,
     targetElo: Number(rawProfile.targetElo) || 1800,
+    twoFactorAuth:
+      raw2fa && clean2faSecret.length >= 16
+        ? {
+            enabled: Boolean(raw2fa.enabled),
+            secret: clean2faSecret,
+            accountLabel:
+              typeof raw2fa.accountLabel === 'string'
+                ? raw2fa.accountLabel
+                : undefined,
+            activatedAt:
+              typeof raw2fa.activatedAt === 'string'
+                ? raw2fa.activatedAt
+                : undefined,
+          }
+        : undefined,
   };
 
   const tournaments = normalizeTournamentsArray(

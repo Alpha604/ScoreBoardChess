@@ -35,7 +35,12 @@ import {
   LocalSnapshotItem,
   SessionConfig,
 } from '../services/jsonbinService';
-import { FideGame, OpponentPlayer, Tournament } from '../types/fide';
+import {
+  FideGame,
+  OpponentPlayer,
+  Tournament,
+  TwoFactorAuthConfig,
+} from '../types/fide';
 import {
   formatPlayerNameLastFirst,
   getOpponentEloForCadence,
@@ -43,6 +48,7 @@ import {
 } from '../utils/fideValidation';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { IconButton } from './IconButton';
+import { MicrosoftAuthenticatorPanel } from './MicrosoftAuthenticatorPanel';
 
 interface SettingsSectionProps {
   session: SessionConfig;
@@ -72,6 +78,7 @@ interface SettingsSectionProps {
     entityType: 'tournament' | 'game' | 'opponent',
     entity: Tournament | FideGame | OpponentPlayer
   ) => Promise<void>;
+  onUpdateTwoFactorAuth: (next: TwoFactorAuthConfig | undefined) => Promise<void>;
 }
 
 export const SettingsSection: React.FC<SettingsSectionProps> = ({
@@ -95,6 +102,7 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
   onRestoreFullSnapshot,
   onRestoreSelectiveFromSnapshot,
   onRestoreSingleEntity,
+  onUpdateTwoFactorAuth,
 }) => {
   const [binIdInput, setBinIdInput] = useState(session.binId);
   const [masterKeyInput, setMasterKeyInput] = useState(session.masterKey);
@@ -274,6 +282,13 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
           </IconButton>
         </div>
       )}
+
+      {/* SECTION 0 : SÉCURITÉ A2F MICROSOFT AUTHENTICATOR */}
+      <MicrosoftAuthenticatorPanel
+        twoFactorAuth={fideDb.profile.twoFactorAuth}
+        accountName={fideDb.profile.displayName}
+        onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
+      />
 
       {/* SECTION 1 : STATUT DES 2 JSONBIN */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">

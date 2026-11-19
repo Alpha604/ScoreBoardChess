@@ -26,6 +26,7 @@ import {
   PlayerProfile,
   TimeControlCategory,
   Tournament,
+  TwoFactorAuthConfig,
 } from '../types/fide';
 import {
   formatPlayerNameDisplay,
@@ -70,6 +71,7 @@ interface FriendlySectionProps {
   onDeleteOpponent: (id: string) => Promise<void>;
   onLoadSampleFriendlyData: () => Promise<void>;
   onInitializeEmptyFriendlyBin: () => Promise<void>;
+  onUpdateTwoFactorAuth: (next: TwoFactorAuthConfig | undefined) => Promise<void>;
 }
 
 export const FriendlySection: React.FC<FriendlySectionProps> = ({
@@ -86,6 +88,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
   onDeleteOpponent,
   onLoadSampleFriendlyData,
   onInitializeEmptyFriendlyBin,
+  onUpdateTwoFactorAuth,
 }) => {
   const [subTab, setSubTab] = useState<FriendlySubTab>('overview');
   const [selectedTournamentFilter, setSelectedTournamentFilter] =
@@ -1010,6 +1013,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
             setSubTab('games');
           }}
           isFriendlyMode={true}
+          twoFactorAuth={profile.twoFactorAuth}
+          accountName={profile.displayName}
+          onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
         />
       )}
     </div>

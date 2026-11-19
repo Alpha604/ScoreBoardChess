@@ -87,6 +87,22 @@ export function sanitizePlayerProfilePayload(
     : 'None';
   const validK = VALID_K.includes(input.kFactor) ? input.kFactor : 20;
 
+  const raw2fa = input.twoFactorAuth;
+  const cleanSecret = (raw2fa?.secret || '')
+    .toUpperCase()
+    .replace(/[^A-Z2-7]/g, '')
+    .slice(0, 64);
+
+  const twoFactorAuth =
+    raw2fa && cleanSecret.length >= 16
+      ? {
+          enabled: Boolean(raw2fa.enabled),
+          secret: cleanSecret,
+          accountLabel: sanitizeString(raw2fa.accountLabel, 80, ''),
+          activatedAt: raw2fa.activatedAt,
+        }
+      : undefined;
+
   return {
     uid,
     displayName: sanitizeString(input.displayName, 80, 'Mon Profil FIDE'),
@@ -107,6 +123,7 @@ export function sanitizePlayerProfilePayload(
     targetElo: Math.round(
       clampNumber(Number(input.targetElo), 800, 3500, 1800)
     ),
+    twoFactorAuth,
   };
 }
 

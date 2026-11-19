@@ -70,6 +70,7 @@ import {
   OpponentPlayer,
   PlayerProfile,
   Tournament,
+  TwoFactorAuthConfig,
 } from './types/fide';
 import { calculateFidePerformanceRating } from './utils/fideMath';
 import {
@@ -436,11 +437,30 @@ export default function App() {
   // =========================================================
 
   const handleSaveProfile = async (input: Omit<PlayerProfile, 'uid'>) => {
-    const cleanProfile = sanitizePlayerProfilePayload('default_player', input);
+    const cleanProfile = sanitizePlayerProfilePayload('default_player', {
+      ...input,
+      twoFactorAuth: input.twoFactorAuth ?? profile.twoFactorAuth,
+    });
     await persistUpdate({
       ...dbState,
       profile: cleanProfile,
     });
+  };
+
+  const handleUpdateTwoFactorAuth = async (
+    next2fa: TwoFactorAuthConfig | undefined
+  ) => {
+    const updatedProfile = sanitizePlayerProfilePayload('default_player', {
+      ...profile,
+      twoFactorAuth: next2fa,
+    });
+    await persistUpdate(
+      {
+        ...dbState,
+        profile: updatedProfile,
+      },
+      { skipAutoCreateOpponentsFromGames: true }
+    );
   };
 
   const handleSaveOpponent = async (
@@ -2066,6 +2086,9 @@ export default function App() {
                 setInspectedGame(game);
                 setActiveTab('games');
               }}
+              twoFactorAuth={profile?.twoFactorAuth}
+              accountName={profile?.displayName}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
 
@@ -2098,6 +2121,7 @@ export default function App() {
               onDeleteOpponent={handleDeleteFriendlyOpponent}
               onLoadSampleFriendlyData={handleLoadSampleFriendlyData}
               onInitializeEmptyFriendlyBin={handleInitializeEmptyFriendlyBin}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
 
@@ -2169,6 +2193,7 @@ export default function App() {
                 }
               }}
               onRestoreSingleEntity={handleRestoreSingleEntity}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
           </main>

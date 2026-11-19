@@ -53,6 +53,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
         rapidElo: Number(rapidElo) || 1500,
         blitzElo: Number(blitzElo) || 1500,
         targetElo: Number(targetElo) || 2000,
+        twoFactorAuth: profile?.twoFactorAuth,
       });
       onClose();
     } finally {
@@ -237,16 +238,29 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
           </div>
 
-          <div>
-            <label className="block font-semibold text-[#CBD5E1] mb-1">Année de naissance</label>
-            <input
-              type="number"
-              min={1920}
-              max={2025}
-              value={birthYear}
-              onChange={(e) => setBirthYear(Number(e.target.value))}
-              className="w-32 px-3 py-2 font-mono bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8]"
-            />
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <label className="block font-semibold text-[#CBD5E1] mb-1">Année de naissance</label>
+              <input
+                type="number"
+                min={1920}
+                max={2025}
+                value={birthYear}
+                onChange={(e) => setBirthYear(Number(e.target.value))}
+                className="w-32 px-3 py-2 font-mono bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8]"
+              />
+            </div>
+
+            <div className="px-3 py-2 rounded-xl bg-[#19202B] border border-[#232C3A] text-[11px]">
+              <span className="text-[#9BA7B8]">A2F Microsoft Authenticator : </span>
+              {profile?.twoFactorAuth?.enabled && profile?.twoFactorAuth?.secret ? (
+                <span className="font-mono font-bold text-emerald-400">Active</span>
+              ) : (
+                <span className="font-mono font-bold text-[#D4A853]">
+                  Non configurée (Paramètres)
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-[#232C3A]">

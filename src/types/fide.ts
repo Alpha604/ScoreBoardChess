@@ -13,6 +13,13 @@ export type GameTermination =
   | 'Threefold Repetition'
   | 'Insufficient Material';
 
+export interface TwoFactorAuthConfig {
+  enabled: boolean;
+  secret: string; // Clé secrète Base32 (Microsoft Authenticator / TOTP)
+  accountLabel?: string;
+  activatedAt?: string;
+}
+
 export interface PlayerProfile {
   uid: string;
   displayName: string;
@@ -28,6 +35,7 @@ export interface PlayerProfile {
   blitzElo: number;
   targetElo: number;
   accessPin?: string;
+  twoFactorAuth?: TwoFactorAuthConfig;
 }
 
 /**

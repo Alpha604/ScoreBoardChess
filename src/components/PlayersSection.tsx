@@ -18,16 +18,19 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import { FideGame, FideTitle, OpponentPlayer } from '../types/fide';
+import { FideGame, FideTitle, OpponentPlayer, TwoFactorAuthConfig } from '../types/fide';
 import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import {
   formatPlayerNameDisplay,
   formatPlayerNameLastFirst,
   hasQuestionMarkName,
 } from '../utils/fideValidation';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { FederationFlag } from './FederationFlag';
 import { IconButton } from './IconButton';
+import {
+  StrictDeletePlayerModal,
+  StrictDeleteTarget,
+} from './StrictDeletePlayerModal';
 
 interface PlayersSectionProps {
   opponents: OpponentPlayer[];
@@ -41,6 +44,9 @@ interface PlayersSectionProps {
   onDeleteOpponent: (id: string) => Promise<void>;
   onOpenGameInViewer: (game: FideGame) => void;
   isFriendlyMode?: boolean;
+  twoFactorAuth?: TwoFactorAuthConfig;
+  accountName?: string;
+  onUpdateTwoFactorAuth: (next: TwoFactorAuthConfig | undefined) => Promise<void>;
 }
 
 type SortField =
@@ -74,6 +80,9 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
   onDeleteOpponent,
   onOpenGameInViewer,
   isFriendlyMode = false,
+  twoFactorAuth,
+  accountName = 'Joueur FIDE',
+  onUpdateTwoFactorAuth,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [sortField, setSortField] = useState<SortField>('name');
@@ -115,8 +124,9 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
     }
   }, [modalStep]);
 
-  // Modale de confirmation de suppression (3s)
-  const [opponentToDelete, setOpponentToDelete] = useState<OpponentPlayer | null>(null);
+  // Modale de suppression stricte (3 verrous + Microsoft Authenticator A2F)
+  const [opponentToDelete, setOpponentToDelete] =
+    useState<StrictDeleteTarget | null>(null);
 
   // Calcul des statistiques complètes pour chaque joueur affronté
   const enrichedOpponents = useMemo(() => {
@@ -1897,53 +1907,14 @@ export const PlayersSection: React.FC<PlayersSectionProps> = ({
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UN JOUEUR (3 secondes) */}
-      <ConfirmDeleteModal
-        isOpen={Boolean(opponentToDelete)}
-        title="Supprimer cette fiche joueur ?"
-        subtitle="Vous êtes sur le point de supprimer ce joueur de votre répertoire d'adversaires."
-        itemName={
-          opponentToDelete
-            ? formatPlayerNameDisplay(
-                opponentToDelete.name,
-                opponentToDelete.isNameUncertain
-              )
-            : ''
-        }
-        details={
-          opponentToDelete
-            ? [
-                {
-                  label: 'Elos (Classique / Rapide / Blitz)',
-                  value: `${
-                    opponentToDelete.isStandardEloUnknown
-                      ? '?'
-                      : opponentToDelete.standardElo || opponentToDelete.elo || '?'
-                  } / ${
-                    opponentToDelete.isRapidEloUnknown ||
-                    !opponentToDelete.rapidElo ||
-                    Number(opponentToDelete.rapidElo) <= 0
-                      ? '?'
-                      : opponentToDelete.rapidElo
-                  } / ${
-                    opponentToDelete.isBlitzEloUnknown ||
-                    !opponentToDelete.blitzElo ||
-                    Number(opponentToDelete.blitzElo) <= 0
-                      ? '?'
-                      : opponentToDelete.blitzElo
-                  }`,
-                },
-                {
-                  label: 'Identifiants',
-                  value: `FIDE: ${opponentToDelete.fideId || '—'} · FFE: ${
-                    opponentToDelete.ffeId || '—'
-                  }`,
-                },
-              ]
-            : []
-        }
+      {/* MODALE DE SUPPRESSION STRICTE AVEC MICROSOFT AUTHENTICATOR A2F */}
+      <StrictDeletePlayerModal
+        opponent={opponentToDelete}
+        twoFactorAuth={twoFactorAuth}
+        accountName={accountName}
+        onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
         onCancel={() => setOpponentToDelete(null)}
-        onConfirm={async () => {
+        onConfirmDelete={async () => {
           if (!opponentToDelete) return;
           const id = opponentToDelete.id;
           if (selectedOpponentId === id) onSelectOpponent(null);
