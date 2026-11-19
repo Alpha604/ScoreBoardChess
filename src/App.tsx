@@ -12,6 +12,7 @@ import {
   Database,
   LayoutDashboard,
   LogOut,
+  MoreHorizontal,
   Plus,
   RefreshCw,
   Settings,
@@ -99,6 +100,7 @@ type ActiveTab =
 export default function App() {
   const [session, setSession] = useState<SessionConfig>(() => getSavedSession());
   const [activeTab, setActiveTab] = useState<ActiveTab>('dashboard');
+  const [isMobileMoreOpen, setIsMobileMoreOpen] = useState(false);
   const [selectedTournamentFilter, setSelectedTournamentFilter] = useState<string>('');
   const [selectedOpponentId, setSelectedOpponentId] = useState<string | null>(null);
   const [inspectedGame, setInspectedGame] = useState<FideGame | null>(null);
@@ -1352,106 +1354,85 @@ export default function App() {
         </div>
       </aside>
 
-      {/* Navigation Mobile Compacte (Icônes uniquement) */}
-      <div className="md:hidden bg-[#0F131A] border-b border-[#1F2733] px-3 py-2.5 space-y-2.5 sticky top-0 z-30">
-        <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-lg bg-[#19202B] border border-[#2B3647] flex items-center justify-center shrink-0">
-              <Crown className="w-4 h-4 text-[#D4A853]" />
+      {/* En-tête Mobile Minimal Sticky (le menu principal est en bas) */}
+      <header className="md:hidden bg-[#0F131A]/95 backdrop-blur-md border-b border-[#1F2733] px-3.5 h-14 flex items-center justify-between gap-2 sticky top-0 z-30">
+        <button
+          type="button"
+          onClick={() => {
+            setActiveTab('dashboard');
+            setIsMobileMoreOpen(false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+          }}
+          className="flex items-center gap-2.5 min-w-0 text-left cursor-pointer"
+        >
+          <div className="w-9 h-9 rounded-xl bg-[#19202B] border border-[#2B3647] flex items-center justify-center shrink-0">
+            <Crown className="w-4 h-4 text-[#D4A853]" />
+          </div>
+          <div className="min-w-0">
+            <div className="font-display text-sm font-bold text-[#F1F4F8] truncate leading-tight">
+              {activeSectionMeta[activeTab].title}
             </div>
-            <div className="min-w-0">
-              <div className="font-display text-sm font-bold text-[#F1F4F8] truncate">
-                {activeSectionMeta[activeTab].title}
-              </div>
+            <div className="text-[10px] font-mono text-[#9BA7B8] flex items-center gap-1.5 truncate">
+              <span className="text-emerald-400 font-bold">
+                Std {dashboardStats.currentStd}
+              </span>
+              <span className="text-[#475569]">·</span>
+              <span className="text-[#D4A853]">
+                Rap {dashboardStats.currentRapid}
+              </span>
+              <span className="text-[#475569]">·</span>
+              <span className="text-sky-400">
+                Blz {dashboardStats.currentBlitz}
+              </span>
             </div>
           </div>
+        </button>
 
-          <div className="flex items-center gap-1.5 shrink-0">
-            <IconButton
-              variant="surface"
-              size="sm"
-              tooltipPos="bottom"
-              label="Synchroniser"
-              disabled={isAnySyncing}
-              onClick={() =>
-                activeTab === 'friendly'
-                  ? loadFriendlyFromJsonBin()
-                  : loadFromJsonBin()
-              }
-            >
-              <RefreshCw
-                className={`w-3.5 h-3.5 ${
-                  isAnySyncing ? 'animate-spin text-emerald-400' : ''
-                }`}
-              />
-            </IconButton>
-
-            <button
-              type="button"
-              onClick={() => setIsProfileModalOpen(true)}
-              aria-label="Profil joueur"
-              data-tooltip={profile?.displayName || 'Profil'}
-              data-tooltip-pos="bottom"
-              className="w-8 h-8 rounded-lg bg-[#19202B] border border-[#2B3647] flex items-center justify-center cursor-pointer"
-            >
-              <FederationFlag code={profile?.federation || 'FRA'} size="xs" />
-            </button>
-
-            <IconButton
-              variant="danger"
-              size="sm"
-              tooltipPos="bottom"
-              label="Déconnexion"
-              onClick={handleLogout}
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </IconButton>
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5">
-          {fideNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = activeTab === item.id;
-            return (
-              <IconButton
-                key={item.id}
-                variant={active ? 'active' : 'ghost'}
-                size="md"
-                tooltipPos="bottom"
-                label={item.label}
-                badge={item.badge}
-                onClick={() => {
-                  if (item.id === 'players') setSelectedOpponentId(null);
-                  setActiveTab(item.id);
-                }}
-              >
-                <Icon className="w-4 h-4" />
-              </IconButton>
-            );
-          })}
+        <div className="flex items-center gap-1.5 shrink-0">
           <IconButton
-            variant={activeTab === 'friendly' ? 'active' : 'ghost'}
-            size="md"
+            variant={activeTab === 'friendly' ? 'gold' : 'surface'}
+            size="sm"
             tooltipPos="bottom"
             label="Parties Amicales"
-            badge={friendlyGames.length}
-            onClick={() => setActiveTab('friendly')}
+            badge={friendlyGames.length > 0 ? friendlyGames.length : undefined}
+            onClick={() => {
+              setActiveTab('friendly');
+              setIsMobileMoreOpen(false);
+              window.scrollTo({ top: 0, behavior: 'smooth' });
+            }}
           >
-            <Coffee className="w-4 h-4" />
+            <Coffee className="w-3.5 h-3.5" />
           </IconButton>
+
           <IconButton
-            variant={activeTab === 'settings' ? 'active' : 'ghost'}
-            size="md"
+            variant="surface"
+            size="sm"
             tooltipPos="bottom"
-            label="Paramètres & Cache"
-            badge={deletedVault.length > 0 ? deletedVault.length : undefined}
-            onClick={() => setActiveTab('settings')}
+            label="Synchroniser"
+            disabled={isAnySyncing}
+            onClick={() =>
+              activeTab === 'friendly'
+                ? loadFriendlyFromJsonBin()
+                : loadFromJsonBin()
+            }
           >
-            <Settings className="w-4 h-4" />
+            <RefreshCw
+              className={`w-3.5 h-3.5 ${
+                isAnySyncing ? 'animate-spin text-emerald-400' : ''
+              }`}
+            />
           </IconButton>
+
+          <button
+            type="button"
+            onClick={() => setIsProfileModalOpen(true)}
+            aria-label="Profil joueur"
+            className="w-8 h-8 rounded-lg bg-[#19202B] border border-[#2B3647] flex items-center justify-center cursor-pointer"
+          >
+            <FederationFlag code={profile?.federation || 'FRA'} size="xs" />
+          </button>
         </div>
-      </div>
+      </header>
 
       {/* Zone Principale de Contenu à Droite */}
       <div className="flex-1 min-w-0 flex flex-col justify-between">
@@ -1525,7 +1506,7 @@ export default function App() {
             </div>
           </header>
 
-          <main className="max-w-[1280px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-6 space-y-6">
+          <main className="max-w-[1280px] w-full mx-auto px-3 sm:px-7 lg:px-10 py-4 sm:py-6 space-y-5 sm:space-y-6">
             {errorBanner && (
               <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-rose-200">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -2193,13 +2174,13 @@ export default function App() {
           </main>
         </div>
 
-        {/* Footer discret Obsidian */}
-        <footer className="mt-12 border-t border-[#1F2733] bg-[#0F131A] px-6 sm:px-8 py-4 text-xs text-[#6C788B] flex flex-wrap items-center justify-between gap-4">
-          <div className="font-mono">
+        {/* Footer discret Obsidian (avec marge basse mobile pour ne pas être masqué par la bottom bar) */}
+        <footer className="mt-10 border-t border-[#1F2733] bg-[#0F131A] px-4 sm:px-8 pt-4 pb-24 md:py-4 text-xs text-[#6C788B] flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+          <div className="font-mono text-[11px] truncate max-w-full">
             FIDE Chess Ledger · Bin #1 : {session.binId} · Bin #2 :{' '}
             {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID}
           </div>
-          <div className="font-mono">
+          <div className="font-mono text-[11px]">
             Synchro :{' '}
             {dbState.updatedAt
               ? new Date(dbState.updatedAt).toLocaleString('fr-FR')
@@ -2207,6 +2188,247 @@ export default function App() {
           </div>
         </footer>
       </div>
+
+      {/* MENU FIXE EN BAS SUR TÉLÉPHONE (Bottom Tab Bar) */}
+      <nav
+        aria-label="Menu principal mobile"
+        className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-[#0F131A]/95 backdrop-blur-lg border-t border-[#1F2733] pb-safe shadow-[0_-8px_28px_rgba(0,0,0,0.45)]"
+      >
+        <div className="grid grid-cols-6 items-stretch">
+          {(
+            [
+              { id: 'dashboard', shortLabel: 'Accueil', icon: LayoutDashboard },
+              {
+                id: 'tournaments',
+                shortLabel: 'Tournois',
+                icon: Trophy,
+                badge: tournaments.length > 0 ? tournaments.length : undefined,
+              },
+              {
+                id: 'games',
+                shortLabel: 'Parties',
+                icon: Swords,
+                badge: games.length > 0 ? games.length : undefined,
+              },
+              {
+                id: 'players',
+                shortLabel: 'Joueurs',
+                icon: Users,
+                badge: opponents.length > 0 ? opponents.length : undefined,
+              },
+              { id: 'statistics', shortLabel: 'Stats', icon: TrendingUp },
+            ] as {
+              id: ActiveTab;
+              shortLabel: string;
+              icon: React.ComponentType<{ className?: string }>;
+              badge?: number;
+            }[]
+          ).map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.id && !isMobileMoreOpen;
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => {
+                  if (item.id === 'players') setSelectedOpponentId(null);
+                  setActiveTab(item.id);
+                  setIsMobileMoreOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`relative flex flex-col items-center justify-center gap-1 py-2 px-0.5 min-h-[56px] transition-colors cursor-pointer ${
+                  active
+                    ? 'text-emerald-400'
+                    : 'text-[#8C98AA] active:text-[#F1F4F8]'
+                }`}
+              >
+                {active && (
+                  <span className="absolute top-0 w-6 h-0.5 rounded-full bg-emerald-400" />
+                )}
+                <div className="relative">
+                  <Icon className="w-5 h-5" />
+                  {item.badge !== undefined && (
+                    <span className="absolute -top-1.5 -right-2.5 min-w-[15px] h-[15px] px-1 rounded-full bg-[#D4A853] text-[#0B0E12] text-[9px] font-mono font-bold leading-none inline-flex items-center justify-center border border-[#0F131A]">
+                      {item.badge > 99 ? '99+' : item.badge}
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] font-semibold tracking-tight truncate max-w-full">
+                  {item.shortLabel}
+                </span>
+              </button>
+            );
+          })}
+
+          <button
+            type="button"
+            onClick={() => setIsMobileMoreOpen((prev) => !prev)}
+            className={`relative flex flex-col items-center justify-center gap-1 py-2 px-0.5 min-h-[56px] transition-colors cursor-pointer ${
+              isMobileMoreOpen ||
+              activeTab === 'friendly' ||
+              activeTab === 'settings'
+                ? 'text-[#D4A853]'
+                : 'text-[#8C98AA] active:text-[#F1F4F8]'
+            }`}
+          >
+            {(isMobileMoreOpen ||
+              activeTab === 'friendly' ||
+              activeTab === 'settings') && (
+              <span className="absolute top-0 w-6 h-0.5 rounded-full bg-[#D4A853]" />
+            )}
+            <div className="relative">
+              <MoreHorizontal className="w-5 h-5" />
+              {deletedVault.length > 0 && (
+                <span className="absolute -top-1.5 -right-2 min-w-[15px] h-[15px] px-1 rounded-full bg-rose-500 text-white text-[9px] font-mono font-bold leading-none inline-flex items-center justify-center border border-[#0F131A]">
+                  {deletedVault.length}
+                </span>
+              )}
+            </div>
+            <span className="text-[10px] font-semibold tracking-tight">
+              Plus
+            </span>
+          </button>
+        </div>
+      </nav>
+
+      {/* TIROIR MOBILE "PLUS" (Amical, Paramètres, Profil, Déconnexion) */}
+      {isMobileMoreOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex flex-col justify-end bg-black/70 backdrop-blur-xs"
+          onClick={() => setIsMobileMoreOpen(false)}
+        >
+          <div
+            className="bg-[#131820] border-t border-[#2B3647] rounded-t-3xl p-5 pb-safe space-y-4 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="w-10 h-1 rounded-full bg-[#323E52] mx-auto" />
+
+            <div className="flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-[#19202B] border border-[#263142]">
+              <div className="flex items-center gap-3 min-w-0">
+                <FederationFlag code={profile?.federation || 'FRA'} size="md" />
+                <div className="min-w-0">
+                  <div className="font-display font-bold text-sm text-[#F1F4F8] truncate">
+                    {profile?.displayName || 'Mon Profil FIDE'}
+                  </div>
+                  <div className="text-[11px] font-mono text-[#9BA7B8] mt-0.5">
+                    Std <span className="text-emerald-400 font-bold">{dashboardStats.currentStd}</span> · Rap{' '}
+                    <span className="text-[#D4A853] font-bold">{dashboardStats.currentRapid}</span> · Blz{' '}
+                    <span className="text-sky-400 font-bold">{dashboardStats.currentBlitz}</span>
+                  </div>
+                </div>
+              </div>
+              <IconButton
+                variant="surface"
+                size="sm"
+                label="Modifier mon profil"
+                onClick={() => {
+                  setIsMobileMoreOpen(false);
+                  setIsProfileModalOpen(true);
+                }}
+              >
+                <UserCheck className="w-4 h-4 text-emerald-400" />
+              </IconButton>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2.5 text-xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('friendly');
+                  setIsMobileMoreOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`p-3.5 rounded-2xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                  activeTab === 'friendly'
+                    ? 'bg-[#D4A853]/15 border-[#D4A853]/40 text-[#F1F4F8]'
+                    : 'bg-[#19202B] border-[#263142] text-[#CBD5E1]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Coffee className="w-4 h-4 text-[#D4A853] shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">Amical</div>
+                    <div className="text-[10px] text-[#6C788B]">
+                      {friendlyGames.length} partie(s)
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab('settings');
+                  setIsMobileMoreOpen(false);
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }}
+                className={`p-3.5 rounded-2xl border text-left flex items-center justify-between gap-2 transition-colors cursor-pointer ${
+                  activeTab === 'settings'
+                    ? 'bg-emerald-500/15 border-emerald-500/40 text-[#F1F4F8]'
+                    : 'bg-[#19202B] border-[#263142] text-[#CBD5E1]'
+                }`}
+              >
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Settings className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="font-bold truncate">Paramètres</div>
+                    <div className="text-[10px] text-[#6C788B]">
+                      JSONBin & Cache
+                    </div>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                disabled={isAnySyncing}
+                onClick={() => {
+                  if (activeTab === 'friendly') {
+                    loadFriendlyFromJsonBin();
+                  } else {
+                    loadFromJsonBin();
+                  }
+                  setIsMobileMoreOpen(false);
+                }}
+                className="p-3.5 rounded-2xl border bg-[#19202B] border-[#263142] text-[#CBD5E1] text-left flex items-center gap-2.5 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 text-sky-400 shrink-0 ${
+                    isAnySyncing ? 'animate-spin' : ''
+                  }`}
+                />
+                <div>
+                  <div className="font-bold">Synchroniser</div>
+                  <div className="text-[10px] text-[#6C788B]">Base active</div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMobileMoreOpen(false);
+                  handleLogout();
+                }}
+                className="p-3.5 rounded-2xl border bg-rose-500/10 border-rose-500/30 text-rose-300 text-left flex items-center gap-2.5 cursor-pointer"
+              >
+                <LogOut className="w-4 h-4 text-rose-400 shrink-0" />
+                <div>
+                  <div className="font-bold">Déconnexion</div>
+                  <div className="text-[10px] text-rose-400/80">Changer de Bin</div>
+                </div>
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsMobileMoreOpen(false)}
+              className="w-full py-3 rounded-xl bg-[#19202B] border border-[#2B3647] text-xs font-semibold text-[#9BA7B8] cursor-pointer"
+            >
+              Fermer le menu
+            </button>
+          </div>
+        </div>
+      )}
 
       {isProfileModalOpen && (
         <ProfileModal

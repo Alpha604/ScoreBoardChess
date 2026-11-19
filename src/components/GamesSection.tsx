@@ -654,8 +654,150 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
             </div>
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
+          <>
+            {/* CARTES MOBILES (< 768px) */}
+            <div className="md:hidden divide-y divide-[#232C3A]">
+              {filteredGames.map((g) => {
+                const displayOppName = formatPlayerNameLastFirst(
+                  g.opponentName,
+                  g.opponentNameUncertain
+                );
+                const displayOppElo = formatEloDisplay(
+                  g.opponentElo,
+                  g.opponentEloUnknown
+                );
+                const isFree =
+                  !g.tournamentId ||
+                  g.tournamentId === FREE_GAME_TOURNAMENT_ID;
+
+                return (
+                  <div
+                    key={g.id}
+                    onClick={() => onSetInspectedGame(g)}
+                    className="p-4 active:bg-[#19202B] cursor-pointer space-y-2.5 transition-colors"
+                  >
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <FederationFlag
+                            code={g.opponentFederation || 'FRA'}
+                            size="xs"
+                          />
+                          {g.opponentTitle !== 'None' && (
+                            <span className="font-mono text-[10px] font-bold text-[#D4A853]">
+                              {g.opponentTitle}
+                            </span>
+                          )}
+                          <span className="font-semibold text-sm text-[#F1F4F8] truncate">
+                            {displayOppName}
+                          </span>
+                          <span className="px-1.5 py-0.5 rounded bg-[#19202B] border border-[#2B3647] font-mono text-[11px] font-bold text-[#CBD5E1]">
+                            {displayOppElo}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-[#9BA7B8] mt-1 truncate">
+                          {isFree
+                            ? FREE_GAME_TOURNAMENT_NAME
+                            : g.tournamentName}
+                        </div>
+                      </div>
+
+                      <span
+                        className={`shrink-0 px-2 py-0.5 rounded-lg border font-mono text-[11px] font-bold ${
+                          g.playerScore === 1
+                            ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
+                            : g.playerScore === 0
+                            ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                            : 'bg-[#D4A853]/15 text-[#D4A853] border-[#D4A853]/30'
+                        }`}
+                      >
+                        {g.playerScore === 1
+                          ? '1 · Victoire'
+                          : g.playerScore === 0.5
+                          ? '½ · Nulle'
+                          : '0 · Défaite'}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between gap-2 pt-1 text-[11px] font-mono">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[#9BA7B8]">
+                        <span className="inline-flex items-center gap-1 text-[#CBD5E1]">
+                          <span
+                            className={`w-2 h-2 rounded-xs border ${
+                              g.playerColor === 'White'
+                                ? 'bg-[#F1F4F8] border-[#CBD5E1]'
+                                : 'bg-[#0B0E12] border-[#475569]'
+                            }`}
+                          />
+                          {g.playerColor === 'White' ? 'Blancs' : 'Noirs'}
+                        </span>
+                        <span className="text-[#475569]">·</span>
+                        <span>{g.datePlayed}</span>
+                        <span className="text-[#475569]">·</span>
+                        <span>{isFree ? 'Libre' : `R${g.round}`}</span>
+                        <span className="text-[#475569]">·</span>
+                        <span>
+                          {g.timeControl === 'Standard'
+                            ? 'Classique'
+                            : g.timeControl === 'Rapid'
+                            ? 'Rapide'
+                            : 'Blitz'}
+                        </span>
+                        {!isFriendlyMode && (
+                          <>
+                            <span className="text-[#475569]">·</span>
+                            {g.opponentEloUnknown || g.opponentElo <= 0 ? (
+                              <span className="text-[#6C788B]">—</span>
+                            ) : (
+                              <span
+                                className={`font-bold ${
+                                  g.eloChange >= 0
+                                    ? 'text-emerald-400'
+                                    : 'text-rose-400'
+                                }`}
+                              >
+                                {g.eloChange >= 0
+                                  ? `+${g.eloChange.toFixed(1)}`
+                                  : g.eloChange.toFixed(1)}
+                              </span>
+                            )}
+                          </>
+                        )}
+                      </div>
+
+                      <div
+                        className="flex items-center gap-1 shrink-0"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <IconButton
+                          variant="ghost"
+                          size="xs"
+                          label="Modifier la partie"
+                          onClick={() => {
+                            setStepError(null);
+                            openEditGameModal(g);
+                          }}
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </IconButton>
+                        <IconButton
+                          variant="danger"
+                          size="xs"
+                          label="Supprimer la partie"
+                          onClick={() => setGameToDelete(g)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </IconButton>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* TABLEAU DESKTOP (>= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#232C3A] bg-[#19202B]/70 text-[11px] font-bold uppercase tracking-wider text-[#9BA7B8]">
                   <th className="py-3 px-4">Date & Ronde</th>
@@ -822,15 +964,16 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   );
                 })}
               </tbody>
-            </table>
-          </div>
+              </table>
+            </div>
+          </>
         )}
       </div>
 
       {/* MODALE DÉTAILS DE LA PARTIE & NOTATION PGN COPIABLE */}
       {inspectedGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-[#131820] border border-[#2B3647] rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-[#131820] border border-[#2B3647] rounded-t-3xl sm:rounded-2xl max-w-3xl w-full p-4 sm:p-6 space-y-5 max-h-[92dvh] overflow-y-auto shadow-2xl pb-safe">
             <div className="flex items-start justify-between gap-4 border-b border-[#232C3A] pb-4">
               <div>
                 <div className="text-xs font-mono text-[#9BA7B8]">
@@ -1142,8 +1285,8 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
       {/* MODAL CRÉATION / ÉDITION D'UNE PARTIE */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-[#131820] border border-[#2B3647] rounded-2xl max-w-3xl w-full p-6 sm:p-7 space-y-6 max-h-[94vh] overflow-y-auto shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-[#131820] border border-[#2B3647] rounded-t-3xl sm:rounded-2xl max-w-3xl w-full p-4 sm:p-7 space-y-5 sm:space-y-6 max-h-[92dvh] overflow-y-auto shadow-2xl pb-safe">
             <div className="flex items-start justify-between gap-4 border-b border-[#232C3A] pb-4">
               <div className="space-y-1">
                 <div className="flex items-center gap-2 text-xs font-mono text-[#9BA7B8]">

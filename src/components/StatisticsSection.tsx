@@ -640,7 +640,102 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           </div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            {/* VUE MOBILE : Cartes mensuelles (< 640px) */}
+            <div className="sm:hidden divide-y divide-[#232C3A]">
+              {(showAllMonthlyPeriods
+                ? monthlyVariations
+                : monthlyVariations.slice(0, 6)
+              ).map((row) => (
+                <div key={row.period} className="p-4 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono font-bold text-sm text-[#F1F4F8]">
+                      {row.label}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    {(
+                      [
+                        {
+                          cad: 'Standard' as TimeControlCategory,
+                          label: 'Classique',
+                          titleColor: 'text-emerald-400',
+                        },
+                        {
+                          cad: 'Rapid' as TimeControlCategory,
+                          label: 'Rapide',
+                          titleColor: 'text-[#D4A853]',
+                        },
+                        {
+                          cad: 'Blitz' as TimeControlCategory,
+                          label: 'Blitz',
+                          titleColor: 'text-sky-400',
+                        },
+                      ]
+                    ).map((item) => {
+                      const cell = row[item.cad];
+                      const isSelected =
+                        selectedVariationCell?.period === row.period &&
+                        selectedVariationCell?.cadence === item.cad;
+                      return (
+                        <button
+                          key={item.cad}
+                          type="button"
+                          disabled={!cell.hasActivity}
+                          onClick={() => {
+                            if (!cell.hasActivity) return;
+                            setSelectedVariationCell(
+                              isSelected
+                                ? null
+                                : { period: row.period, cadence: item.cad }
+                            );
+                          }}
+                          className={`p-2 rounded-xl border text-left transition-colors ${
+                            !cell.hasActivity
+                              ? 'bg-[#0F131A]/70 border-[#232C3A] opacity-60 cursor-default'
+                              : isSelected
+                              ? 'bg-emerald-500/15 border-emerald-500/50 cursor-pointer'
+                              : 'bg-[#19202B] border-[#263142] active:border-[#475569] cursor-pointer'
+                          }`}
+                        >
+                          <div
+                            className={`text-[10px] font-bold uppercase tracking-wider ${item.titleColor}`}
+                          >
+                            {item.label}
+                          </div>
+                          {!cell.hasActivity ? (
+                            <div className="text-[11px] text-[#6C788B] mt-1 font-mono">
+                              —
+                            </div>
+                          ) : (
+                            <div className="mt-1 flex items-center justify-between gap-1">
+                              <span
+                                className={`font-mono tabular-nums text-xs font-bold ${
+                                  cell.delta > 0
+                                    ? 'text-emerald-400'
+                                    : cell.delta < 0
+                                    ? 'text-rose-400'
+                                    : 'text-[#9BA7B8]'
+                                }`}
+                              >
+                                {cell.delta > 0
+                                  ? `▲+${cell.delta.toFixed(1)}`
+                                  : cell.delta < 0
+                                  ? `▼${cell.delta.toFixed(1)}`
+                                  : '0.0'}
+                              </span>
+                              <Eye className="w-3 h-3 text-[#9BA7B8] shrink-0" />
+                            </div>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* VUE DESKTOP : Tableau (>= 640px) */}
+            <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="border-b border-[#232C3A] text-xs font-bold tracking-wide">
@@ -744,7 +839,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
 
             {/* Détail du mois + cadence sélectionné */}
             {activeVariationDetail && (
-              <div className="border-t border-[#232C3A] bg-[#0F131A] p-5 space-y-4">
+              <div className="border-t border-[#232C3A] bg-[#0F131A] p-4 sm:p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
                     <span className="font-mono font-bold text-sm text-[#F1F4F8]">
@@ -834,86 +929,155 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                 )}
 
                 {activeVariationDetail.cell.games.length > 0 ? (
-                  <div className="overflow-x-auto border border-[#232C3A] rounded-xl bg-[#131820]">
-                    <table className="w-full text-left border-collapse">
-                      <thead>
-                        <tr className="border-b border-[#232C3A] bg-[#19202B]/70 text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
-                          <th className="py-2.5 px-4">Date</th>
-                          <th className="py-2.5 px-4">Tournoi</th>
-                          <th className="py-2.5 px-4">Adversaire</th>
-                          <th className="py-2.5 px-4 text-right">Son Elo</th>
-                          <th className="py-2.5 px-4 text-center">Score</th>
-                          <th className="py-2.5 px-4 text-right">Variation</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-[#232C3A] text-xs">
-                        {activeVariationDetail.cell.games.map((g) => (
-                          <tr key={g.id} className="hover:bg-[#19202B]">
-                            <td className="py-2.5 px-4 font-mono text-[#9BA7B8] whitespace-nowrap">
-                              {g.datePlayed}
-                            </td>
-                            <td className="py-2.5 px-4 text-[#CBD5E1] truncate max-w-[200px]">
-                              {g.tournamentName}
-                            </td>
-                            <td className="py-2.5 px-4 font-semibold text-[#F1F4F8]">
-                              <span className="inline-flex items-center gap-2">
-                                <FederationFlag
-                                  code={g.opponentFederation || 'FRA'}
-                                  size="xs"
-                                />
-                                {g.opponentTitle !== 'None' && (
-                                  <span className="font-mono text-[10px] text-[#D4A853]">
-                                    {g.opponentTitle}
-                                  </span>
-                                )}
-                                <span>
-                                  {formatPlayerNameDisplay(
-                                    g.opponentName,
-                                    g.opponentNameUncertain
-                                  )}
+                  <>
+                    {/* Cartes détail mobile (< 640px) */}
+                    <div className="sm:hidden space-y-2">
+                      {activeVariationDetail.cell.games.map((g) => (
+                        <div
+                          key={g.id}
+                          className="p-3 rounded-xl bg-[#131820] border border-[#232C3A] flex items-center justify-between gap-3 text-xs"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-semibold text-[#F1F4F8] flex items-center gap-1.5">
+                              <FederationFlag
+                                code={g.opponentFederation || 'FRA'}
+                                size="xs"
+                              />
+                              {g.opponentTitle !== 'None' && (
+                                <span className="font-mono text-[10px] text-[#D4A853]">
+                                  {g.opponentTitle}
                                 </span>
+                              )}
+                              <span className="truncate">
+                                {formatPlayerNameDisplay(
+                                  g.opponentName,
+                                  g.opponentNameUncertain
+                                )}
                               </span>
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[#F1F4F8]">
+                            </div>
+                            <div className="text-[11px] font-mono text-[#9BA7B8] mt-0.5 truncate">
+                              {g.datePlayed} · Elo{' '}
                               {g.opponentEloUnknown || !g.opponentElo
                                 ? '?'
-                                : g.opponentElo}
-                            </td>
-                            <td className="py-2.5 px-4 text-center font-mono font-bold">
-                              <span
-                                className={
-                                  g.playerScore === 1
-                                    ? 'text-emerald-400'
-                                    : g.playerScore === 0
-                                    ? 'text-rose-400'
-                                    : 'text-[#D4A853]'
-                                }
-                              >
-                                {g.playerScore === 1
-                                  ? '1'
-                                  : g.playerScore === 0.5
-                                  ? '½'
-                                  : '0'}
-                              </span>
-                            </td>
-                            <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold">
-                              <span
-                                className={
-                                  g.eloChange >= 0
-                                    ? 'text-emerald-400'
-                                    : 'text-rose-400'
-                                }
-                              >
-                                {g.eloChange >= 0
-                                  ? `+${g.eloChange.toFixed(1)}`
-                                  : g.eloChange.toFixed(1)}
-                              </span>
-                            </td>
+                                : g.opponentElo}{' '}
+                              · {g.tournamentName}
+                            </div>
+                          </div>
+
+                          <div className="text-right font-mono shrink-0">
+                            <div
+                              className={`font-bold ${
+                                g.playerScore === 1
+                                  ? 'text-emerald-400'
+                                  : g.playerScore === 0
+                                  ? 'text-rose-400'
+                                  : 'text-[#D4A853]'
+                              }`}
+                            >
+                              {g.playerScore === 1
+                                ? '1'
+                                : g.playerScore === 0.5
+                                ? '½'
+                                : '0'}
+                            </div>
+                            <div
+                              className={`text-[11px] font-bold ${
+                                g.eloChange >= 0
+                                  ? 'text-emerald-400'
+                                  : 'text-rose-400'
+                              }`}
+                            >
+                              {g.eloChange >= 0
+                                ? `+${g.eloChange.toFixed(1)}`
+                                : g.eloChange.toFixed(1)}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Tableau détail desktop (>= 640px) */}
+                    <div className="hidden sm:block overflow-x-auto border border-[#232C3A] rounded-xl bg-[#131820]">
+                      <table className="w-full text-left border-collapse">
+                        <thead>
+                          <tr className="border-b border-[#232C3A] bg-[#19202B]/70 text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
+                            <th className="py-2.5 px-4">Date</th>
+                            <th className="py-2.5 px-4">Tournoi</th>
+                            <th className="py-2.5 px-4">Adversaire</th>
+                            <th className="py-2.5 px-4 text-right">Son Elo</th>
+                            <th className="py-2.5 px-4 text-center">Score</th>
+                            <th className="py-2.5 px-4 text-right">Variation</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody className="divide-y divide-[#232C3A] text-xs">
+                          {activeVariationDetail.cell.games.map((g) => (
+                            <tr key={g.id} className="hover:bg-[#19202B]">
+                              <td className="py-2.5 px-4 font-mono text-[#9BA7B8] whitespace-nowrap">
+                                {g.datePlayed}
+                              </td>
+                              <td className="py-2.5 px-4 text-[#CBD5E1] truncate max-w-[200px]">
+                                {g.tournamentName}
+                              </td>
+                              <td className="py-2.5 px-4 font-semibold text-[#F1F4F8]">
+                                <span className="inline-flex items-center gap-2">
+                                  <FederationFlag
+                                    code={g.opponentFederation || 'FRA'}
+                                    size="xs"
+                                  />
+                                  {g.opponentTitle !== 'None' && (
+                                    <span className="font-mono text-[10px] text-[#D4A853]">
+                                      {g.opponentTitle}
+                                    </span>
+                                  )}
+                                  <span>
+                                    {formatPlayerNameDisplay(
+                                      g.opponentName,
+                                      g.opponentNameUncertain
+                                    )}
+                                  </span>
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[#F1F4F8]">
+                                {g.opponentEloUnknown || !g.opponentElo
+                                  ? '?'
+                                  : g.opponentElo}
+                              </td>
+                              <td className="py-2.5 px-4 text-center font-mono font-bold">
+                                <span
+                                  className={
+                                    g.playerScore === 1
+                                      ? 'text-emerald-400'
+                                      : g.playerScore === 0
+                                      ? 'text-rose-400'
+                                      : 'text-[#D4A853]'
+                                  }
+                                >
+                                  {g.playerScore === 1
+                                    ? '1'
+                                    : g.playerScore === 0.5
+                                    ? '½'
+                                    : '0'}
+                                </span>
+                              </td>
+                              <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold">
+                                <span
+                                  className={
+                                    g.eloChange >= 0
+                                      ? 'text-emerald-400'
+                                      : 'text-rose-400'
+                                  }
+                                >
+                                  {g.eloChange >= 0
+                                    ? `+${g.eloChange.toFixed(1)}`
+                                    : g.eloChange.toFixed(1)}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
                 ) : (
                   activeVariationDetail.cell.recordFallback && (
                     <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#263142] text-xs text-[#CBD5E1] flex flex-wrap items-center justify-between gap-2">
@@ -1159,7 +1323,55 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               Ouvertures les plus jouées ({openingStats.length})
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          {/* Ouvertures mobile (< 768px) */}
+          <div className="md:hidden divide-y divide-[#232C3A] text-xs">
+            {openingStats.map((op) => {
+              const wPct = op.count > 0 ? Math.round((op.wins / op.count) * 100) : 0;
+              const dPct = op.count > 0 ? Math.round((op.draws / op.count) * 100) : 0;
+              const lPct = op.count > 0 ? Math.max(0, 100 - wPct - dPct) : 0;
+              return (
+                <div key={`${op.eco}_${op.name}`} className="p-4 space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <span className="font-mono font-bold text-[#D4A853] mr-2">
+                        {op.eco}
+                      </span>
+                      <span className="font-semibold text-[#F1F4F8]">
+                        {op.name}
+                      </span>
+                    </div>
+                    <span
+                      className={`font-mono font-bold shrink-0 ${
+                        op.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                      }`}
+                    >
+                      {op.netElo >= 0
+                        ? `+${op.netElo.toFixed(1)}`
+                        : op.netElo.toFixed(1)}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between gap-3 font-mono text-[11px]">
+                    <span className="text-[#9BA7B8]">{op.count} partie(s)</span>
+                    <div>
+                      <span className="text-emerald-400 font-bold">{op.wins}V</span>{' '}
+                      ·{' '}
+                      <span className="text-[#D4A853] font-bold">{op.draws}N</span>{' '}
+                      ·{' '}
+                      <span className="text-rose-400 font-bold">{op.losses}D</span>
+                    </div>
+                  </div>
+                  <div className="w-full h-1.5 bg-[#19202B] rounded-full overflow-hidden flex">
+                    <div style={{ width: `${wPct}%` }} className="bg-emerald-500 h-full" />
+                    <div style={{ width: `${dPct}%` }} className="bg-[#D4A853] h-full" />
+                    <div style={{ width: `${lPct}%` }} className="bg-rose-500 h-full" />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Ouvertures desktop (>= 768px) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
@@ -1347,7 +1559,87 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               Historique des publications mensuelles ({sortedRatings.length})
             </h3>
           </div>
-          <div className="overflow-x-auto">
+          {/* Historique mensuel mobile (< 768px) */}
+          <div className="md:hidden divide-y divide-[#232C3A] text-xs">
+            {sortedRatings.map((r) => (
+              <div key={r.id} className="p-4 space-y-2.5">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-sm text-[#F1F4F8]">
+                      {formatPeriodLabel(r.period)}
+                    </div>
+                    <div className="text-[11px] text-[#9BA7B8] font-mono mt-0.5">
+                      {r.standardGamesCount} partie(s) ·{' '}
+                      <span
+                        className={`font-bold ${
+                          r.standardDelta >= 0
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }`}
+                      >
+                        {r.standardDelta >= 0
+                          ? `+${r.standardDelta}`
+                          : r.standardDelta}{' '}
+                        pts
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <IconButton
+                      label="Modifier ce relevé"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => handleEditRecord(r)}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </IconButton>
+                    <IconButton
+                      label="Supprimer ce relevé"
+                      variant="danger"
+                      size="xs"
+                      onClick={() => setRecordToDelete(r)}
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </IconButton>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 font-mono text-center">
+                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                    <div className="text-[10px] font-sans text-[#6C788B]">
+                      Classique
+                    </div>
+                    <div className="font-bold text-emerald-400 mt-0.5">
+                      {r.standardElo}
+                    </div>
+                  </div>
+                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                    <div className="text-[10px] font-sans text-[#6C788B]">
+                      Rapide
+                    </div>
+                    <div className="font-bold text-[#D4A853] mt-0.5">
+                      {r.rapidElo}
+                    </div>
+                  </div>
+                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                    <div className="text-[10px] font-sans text-[#6C788B]">
+                      Blitz
+                    </div>
+                    <div className="font-bold text-sky-400 mt-0.5">
+                      {r.blitzElo}
+                    </div>
+                  </div>
+                </div>
+
+                {r.notes && (
+                  <div className="text-[11px] text-[#9BA7B8]">{r.notes}</div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Historique mensuel desktop (>= 768px) */}
+          <div className="hidden md:block overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
                 <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">

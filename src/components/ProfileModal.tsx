@@ -61,8 +61,8 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4">
-      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl max-w-xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-[#131820] border border-[#232C3A] rounded-t-3xl sm:rounded-2xl max-w-xl w-full p-4 sm:p-6 space-y-5 max-h-[92dvh] overflow-y-auto pb-safe">
         <div className="flex items-center justify-between border-b border-[#232C3A] pb-3">
           <div>
             <h2 className="text-lg font-bold text-[#F1F4F8] font-display">

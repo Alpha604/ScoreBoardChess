@@ -521,9 +521,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
           </form>
         )}
 
-        {/* Barre de sous-navigation purement iconique */}
-        <div className="flex items-center justify-between pt-3 border-t border-[#232C3A]">
-          <div className="flex items-center gap-2">
+        {/* Barre de sous-navigation responsive */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#232C3A]">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             {subNavItems.map((item) => {
               const Icon = item.icon;
               const active = subTab === item.id;
@@ -545,7 +545,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
               );
             })}
           </div>
-          <span className="text-xs font-mono text-[#9BA7B8] hidden sm:inline">
+          <span className="text-xs font-mono text-[#9BA7B8] truncate">
             {subNavItems.find((i) => i.id === subTab)?.label}
           </span>
         </div>

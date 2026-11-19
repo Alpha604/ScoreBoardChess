@@ -65,8 +65,8 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
-      <div className="bg-[#131820] border border-rose-500/35 rounded-2xl max-w-lg w-full p-6 space-y-5">
+    <div className="fixed inset-0 z-60 flex items-end sm:items-center justify-center bg-black/80 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-[#131820] border border-rose-500/35 rounded-t-3xl sm:rounded-2xl max-w-lg w-full p-4 sm:p-6 space-y-5 max-h-[92dvh] overflow-y-auto pb-safe">
         <div className="flex items-start justify-between gap-3 border-b border-[#232C3A] pb-4">
           <div className="flex items-start gap-3">
             <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0">

@@ -280,12 +280,12 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         {/* Carte JSONBin #1 : Parties Classées FIDE */}
         <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400">
-                <Trophy className="w-3.5 h-3.5" />
+                <Trophy className="w-3.5 h-3.5 shrink-0" />
                 JSONBin #1 · Base Classée FIDE
               </div>
-              <h2 className="text-base font-bold text-[#F1F4F8] font-mono">
+              <h2 className="text-sm sm:text-base font-bold text-[#F1F4F8] font-mono break-all">
                 {session.binId}
               </h2>
             </div>
@@ -374,12 +374,12 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         {/* Carte JSONBin #2 : Parties Amicales */}
         <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
           <div className="flex items-start justify-between gap-3">
-            <div className="space-y-1">
+            <div className="space-y-1 min-w-0">
               <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-[#D4A853]">
-                <Coffee className="w-3.5 h-3.5" />
+                <Coffee className="w-3.5 h-3.5 shrink-0" />
                 JSONBin #2 · Base Parties Amicales
               </div>
-              <h2 className="text-base font-bold text-[#F1F4F8] font-mono">
+              <h2 className="text-sm sm:text-base font-bold text-[#F1F4F8] font-mono break-all">
                 {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID}
               </h2>
             </div>
