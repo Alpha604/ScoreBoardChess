@@ -963,6 +963,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
           }}
           onGoToTournaments={() => setSubTab('tournaments')}
           isFriendlyMode={true}
+          twoFactorAuth={profile.twoFactorAuth}
+          accountName={profile.displayName}
+          onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
         />
       )}
 
@@ -991,6 +994,9 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
             setSubTab('games');
           }}
           isFriendlyMode={true}
+          twoFactorAuth={profile.twoFactorAuth}
+          accountName={profile.displayName}
+          onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
         />
       )}
 

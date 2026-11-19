@@ -29,12 +29,15 @@ import {
   PlayerProfile,
   TimeControlCategory,
   Tournament,
+  TwoFactorAuthConfig,
 } from '../types/fide';
 import {
   calculateFideEloChange,
   calculateFideExpectedScore,
   calculateFidePerformanceRating,
   ECO_OPENINGS_CATALOG,
+  formatPeriodLabel,
+  getFidePublicationPeriodFromDate,
   getResultFromPlayerScore,
 } from '../utils/fideMath';
 import {
@@ -52,6 +55,7 @@ import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { FederationFlag } from './FederationFlag';
 import { IconButton } from './IconButton';
+import { TwoFactorChallengeModal } from './TwoFactorChallengeModal';
 
 interface GamesSectionProps {
   games: FideGame[];
@@ -70,6 +74,11 @@ interface GamesSectionProps {
   onSelectOpponentProfile: (opponentId: string) => void;
   onGoToTournaments: () => void;
   isFriendlyMode?: boolean;
+  twoFactorAuth?: TwoFactorAuthConfig;
+  accountName?: string;
+  onUpdateTwoFactorAuth: (
+    next: TwoFactorAuthConfig | undefined
+  ) => Promise<void>;
 }
 
 const FIDE_TITLES: FideTitle[] = [
@@ -97,6 +106,9 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   onDeleteGame,
   onSelectOpponentProfile,
   isFriendlyMode = false,
+  twoFactorAuth,
+  accountName = 'Joueur FIDE',
+  onUpdateTwoFactorAuth,
 }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedPgnId, setCopiedPgnId] = useState<string | null>(null);
@@ -842,6 +854,22 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                             : g.timeControl === 'Rapid'
                             ? 'Rapide'
                             : 'Blitz'}
+                          {!isFriendlyMode && (() => {
+                            const tourney = tournaments.find(
+                              (t) => t.id === g.tournamentId
+                            );
+                            const fp = getFidePublicationPeriodFromDate(
+                              tourney
+                                ? tourney.endDate || tourney.startDate
+                                : g.datePlayed
+                            );
+                            return fp ? (
+                              <span className="text-[#D4A853]">
+                                {' '}
+                                · FIDE {formatPeriodLabel(fp)}
+                              </span>
+                            ) : null;
+                          })()}
                         </div>
                       </td>
 
@@ -2189,55 +2217,121 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         </div>
       )}
 
-      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UNE PARTIE (3 secondes) */}
-      <ConfirmDeleteModal
-        isOpen={Boolean(gameToDelete)}
-        title="Supprimer cette partie ?"
-        subtitle="Vous êtes sur le point de supprimer définitivement cette partie de votre historique."
-        itemName={
-          gameToDelete
-            ? `Contre ${formatPlayerNameLastFirst(
-                gameToDelete.opponentName,
-                gameToDelete.opponentNameUncertain
-              )}`
-            : ''
-        }
-        details={
-          gameToDelete
-            ? [
-                {
-                  label: 'Cadre / Tournoi',
-                  value:
-                    gameToDelete.tournamentId === FREE_GAME_TOURNAMENT_ID
-                      ? FREE_GAME_TOURNAMENT_NAME
-                      : gameToDelete.tournamentName,
-                },
-                {
-                  label: 'Date',
-                  value: gameToDelete.datePlayed,
-                },
-                {
-                  label: 'Mon résultat',
-                  value:
-                    gameToDelete.playerScore === 1
-                      ? 'Victoire (1 pt)'
-                      : gameToDelete.playerScore === 0.5
-                      ? 'Nulle (½ pt)'
-                      : 'Défaite (0 pt)',
-                },
-              ]
-            : []
-        }
-        onCancel={() => setGameToDelete(null)}
-        onConfirm={async () => {
-          if (!gameToDelete) return;
-          if (inspectedGame?.id === gameToDelete.id) {
-            onSetInspectedGame(null);
+      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UNE PARTIE (A2F strict pour parties classées FIDE) */}
+      {isFriendlyMode ? (
+        <ConfirmDeleteModal
+          isOpen={Boolean(gameToDelete)}
+          title="Supprimer cette partie amicale ?"
+          subtitle="Vous êtes sur le point de supprimer définitivement cette partie de votre historique."
+          itemName={
+            gameToDelete
+              ? `Contre ${formatPlayerNameLastFirst(
+                  gameToDelete.opponentName,
+                  gameToDelete.opponentNameUncertain
+                )}`
+              : ''
           }
-          await onDeleteGame(gameToDelete.id);
-          setGameToDelete(null);
-        }}
-      />
+          details={
+            gameToDelete
+              ? [
+                  {
+                    label: 'Cadre / Tournoi',
+                    value:
+                      gameToDelete.tournamentId === FREE_GAME_TOURNAMENT_ID
+                        ? FREE_GAME_TOURNAMENT_NAME
+                        : gameToDelete.tournamentName,
+                  },
+                  {
+                    label: 'Date',
+                    value: gameToDelete.datePlayed,
+                  },
+                  {
+                    label: 'Mon résultat',
+                    value:
+                      gameToDelete.playerScore === 1
+                        ? 'Victoire (1 pt)'
+                        : gameToDelete.playerScore === 0.5
+                        ? 'Nulle (½ pt)'
+                        : 'Défaite (0 pt)',
+                  },
+                ]
+              : []
+          }
+          onCancel={() => setGameToDelete(null)}
+          onConfirm={async () => {
+            if (!gameToDelete) return;
+            if (inspectedGame?.id === gameToDelete.id) {
+              onSetInspectedGame(null);
+            }
+            await onDeleteGame(gameToDelete.id);
+            setGameToDelete(null);
+          }}
+        />
+      ) : (
+        <TwoFactorChallengeModal
+          isOpen={Boolean(gameToDelete)}
+          variant="danger"
+          badgeLabel="Suppression protégée · Partie Classée FIDE"
+          title="Supprimer cette partie classée ?"
+          subtitle="La suppression d’une partie officielle impacte vos statistiques et historiques FIDE. Validation Microsoft Authenticator requise."
+          itemLabel={
+            gameToDelete
+              ? `Contre ${formatPlayerNameLastFirst(
+                  gameToDelete.opponentName,
+                  gameToDelete.opponentNameUncertain
+                )}`
+              : undefined
+          }
+          details={
+            gameToDelete
+              ? [
+                  {
+                    label: 'Tournoi',
+                    value:
+                      gameToDelete.tournamentId === FREE_GAME_TOURNAMENT_ID
+                        ? FREE_GAME_TOURNAMENT_NAME
+                        : gameToDelete.tournamentName,
+                  },
+                  {
+                    label: 'Date & Cadence',
+                    value: `${gameToDelete.datePlayed} (${gameToDelete.timeControl})`,
+                  },
+                  {
+                    label: 'Mon résultat',
+                    value:
+                      gameToDelete.playerScore === 1
+                        ? 'Victoire (1 pt)'
+                        : gameToDelete.playerScore === 0.5
+                        ? 'Nulle (½ pt)'
+                        : 'Défaite (0 pt)',
+                  },
+                  {
+                    label: 'Variation Elo',
+                    value:
+                      gameToDelete.eloChange >= 0
+                        ? `+${gameToDelete.eloChange.toFixed(1)}`
+                        : gameToDelete.eloChange.toFixed(1),
+                  },
+                ]
+              : []
+          }
+          requireCheckbox
+          checkboxLabel="Je confirme vouloir supprimer définitivement cette partie classée."
+          confirmLabel="Supprimer la partie (A2F)"
+          twoFactorAuth={twoFactorAuth}
+          accountName={accountName}
+          onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
+          onCancel={() => setGameToDelete(null)}
+          onVerifiedConfirm={async () => {
+            if (!gameToDelete) return;
+            if (inspectedGame?.id === gameToDelete.id) {
+              onSetInspectedGame(null);
+            }
+            await onDeleteGame(gameToDelete.id);
+            setGameToDelete(null);
+          }}
+        />
+      )}
     </div>
   );
 };

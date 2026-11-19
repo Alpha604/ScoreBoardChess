@@ -535,6 +535,41 @@ export function sanitizeMonthlyRatingPayload(
   const currentMonth = new Date().toISOString().slice(0, 7);
   const period = input.period || currentMonth;
 
+  const standardGamesCount = Math.round(
+    clampNumber(Number(input.standardGamesCount), 0, 200, 0)
+  );
+  const standardDelta =
+    Math.round(clampNumber(Number(input.standardDelta), -500, 500, 0) * 10) /
+    10;
+  const standardPlayed =
+    typeof input.standardPlayed === 'boolean'
+      ? input.standardPlayed
+      : standardGamesCount > 0 || standardDelta !== 0;
+
+  const rapidGamesCount = Math.round(
+    clampNumber(Number(input.rapidGamesCount ?? 0), 0, 200, 0)
+  );
+  const rapidDelta =
+    input.rapidDelta !== undefined && input.rapidDelta !== null
+      ? Math.round(clampNumber(Number(input.rapidDelta), -500, 500, 0) * 10) / 10
+      : 0;
+  const rapidPlayed =
+    typeof input.rapidPlayed === 'boolean'
+      ? input.rapidPlayed
+      : rapidGamesCount > 0 || rapidDelta !== 0;
+
+  const blitzGamesCount = Math.round(
+    clampNumber(Number(input.blitzGamesCount ?? 0), 0, 200, 0)
+  );
+  const blitzDelta =
+    input.blitzDelta !== undefined && input.blitzDelta !== null
+      ? Math.round(clampNumber(Number(input.blitzDelta), -500, 500, 0) * 10) / 10
+      : 0;
+  const blitzPlayed =
+    typeof input.blitzPlayed === 'boolean'
+      ? input.blitzPlayed
+      : blitzGamesCount > 0 || blitzDelta !== 0;
+
   return {
     ownerId,
     period,
@@ -543,12 +578,15 @@ export function sanitizeMonthlyRatingPayload(
     ),
     rapidElo: Math.round(clampNumber(Number(input.rapidElo), 800, 3500, 1500)),
     blitzElo: Math.round(clampNumber(Number(input.blitzElo), 800, 3500, 1500)),
-    standardGamesCount: Math.round(
-      clampNumber(Number(input.standardGamesCount), 0, 200, 0)
-    ),
-    standardDelta:
-      Math.round(clampNumber(Number(input.standardDelta), -500, 500, 0) * 10) /
-      10,
+    standardGamesCount,
+    standardDelta: standardPlayed ? standardDelta : 0,
+    standardPlayed,
+    rapidGamesCount,
+    rapidDelta: rapidPlayed ? rapidDelta : 0,
+    rapidPlayed,
+    blitzGamesCount,
+    blitzDelta: blitzPlayed ? blitzDelta : 0,
+    blitzPlayed,
     fideRankNational: Math.round(
       clampNumber(Number(input.fideRankNational), 0, 1000000, 0)
     ),

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   Calculator,
   Calendar,
@@ -8,6 +8,9 @@ import {
   Edit3,
   Eye,
   Plus,
+  RotateCcw,
+  ShieldCheck,
+  Table2,
   Trash2,
   TrendingUp,
   Trophy,
@@ -20,18 +23,20 @@ import {
   PlayerProfile,
   TimeControlCategory,
   Tournament,
+  TwoFactorAuthConfig,
 } from '../types/fide';
 import {
   calculateFideEloChange,
   calculateFideExpectedScore,
   calculateFidePerformanceRating,
   formatPeriodLabel,
+  getFidePublicationPeriodFromDate,
 } from '../utils/fideMath';
 import { formatPlayerNameDisplay } from '../utils/fideValidation';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { EloEvolutionChart } from './EloEvolutionChart';
 import { FederationFlag } from './FederationFlag';
 import { IconButton } from './IconButton';
+import { TwoFactorChallengeModal } from './TwoFactorChallengeModal';
 
 function formatFideMatrixPeriod(period: string): string {
   const [year, month] = period.split('-');
@@ -56,10 +61,126 @@ function formatFideMatrixPeriod(period: string): string {
   return period;
 }
 
+function isCadencePlayed(
+  rec: MonthlyRatingRecord,
+  cadence: TimeControlCategory
+): boolean {
+  if (cadence === 'Standard') {
+    return typeof rec.standardPlayed === 'boolean'
+      ? rec.standardPlayed
+      : rec.standardGamesCount > 0 || rec.standardDelta !== 0;
+  }
+  if (cadence === 'Rapid') {
+    return typeof rec.rapidPlayed === 'boolean'
+      ? rec.rapidPlayed
+      : (rec.rapidGamesCount ?? 0) > 0 || (rec.rapidDelta ?? 0) !== 0;
+  }
+  return typeof rec.blitzPlayed === 'boolean'
+    ? rec.blitzPlayed
+    : (rec.blitzGamesCount ?? 0) > 0 || (rec.blitzDelta ?? 0) !== 0;
+}
+
+function getCadenceDelta(
+  rec: MonthlyRatingRecord,
+  cadence: TimeControlCategory
+): number {
+  if (cadence === 'Standard') return Math.round((rec.standardDelta || 0) * 10) / 10;
+  if (cadence === 'Rapid') return Math.round((rec.rapidDelta || 0) * 10) / 10;
+  return Math.round((rec.blitzDelta || 0) * 10) / 10;
+}
+
+function getCadenceGamesCount(
+  rec: MonthlyRatingRecord,
+  cadence: TimeControlCategory
+): number {
+  if (cadence === 'Standard') return rec.standardGamesCount || 0;
+  if (cadence === 'Rapid') return rec.rapidGamesCount || 0;
+  return rec.blitzGamesCount || 0;
+}
+
+interface MonthlyDraft {
+  id: string;
+  period: string;
+  standardElo: string;
+  rapidElo: string;
+  blitzElo: string;
+  standardPlayed: boolean;
+  standardDelta: string;
+  standardGamesCount: string;
+  rapidPlayed: boolean;
+  rapidDelta: string;
+  rapidGamesCount: string;
+  blitzPlayed: boolean;
+  blitzDelta: string;
+  blitzGamesCount: string;
+  fideRankNational: number;
+  notes: string;
+}
+
+function recordToDraft(r: MonthlyRatingRecord): MonthlyDraft {
+  return {
+    id: r.id,
+    period: r.period,
+    standardElo: String(r.standardElo),
+    rapidElo: String(r.rapidElo),
+    blitzElo: String(r.blitzElo),
+    standardPlayed: isCadencePlayed(r, 'Standard'),
+    standardDelta: String(r.standardDelta ?? 0),
+    standardGamesCount: String(r.standardGamesCount ?? 0),
+    rapidPlayed: isCadencePlayed(r, 'Rapid'),
+    rapidDelta: String(r.rapidDelta ?? 0),
+    rapidGamesCount: String(r.rapidGamesCount ?? 0),
+    blitzPlayed: isCadencePlayed(r, 'Blitz'),
+    blitzDelta: String(r.blitzDelta ?? 0),
+    blitzGamesCount: String(r.blitzGamesCount ?? 0),
+    fideRankNational: r.fideRankNational || 0,
+    notes: r.notes || '',
+  };
+}
+
+function draftToRecordInput(
+  d: MonthlyDraft
+): Omit<MonthlyRatingRecord, 'id' | 'ownerId'> {
+  const parseNum = (s: string, fallback = 0) => {
+    const n = parseFloat(String(s).replace(',', '.').replace('+', ''));
+    return Number.isFinite(n) ? n : fallback;
+  };
+  return {
+    period: d.period,
+    standardElo: Math.round(parseNum(d.standardElo, 1500)),
+    rapidElo: Math.round(parseNum(d.rapidElo, 1500)),
+    blitzElo: Math.round(parseNum(d.blitzElo, 1500)),
+    standardPlayed: d.standardPlayed,
+    standardDelta: d.standardPlayed
+      ? Math.round(parseNum(d.standardDelta, 0) * 10) / 10
+      : 0,
+    standardGamesCount: d.standardPlayed
+      ? Math.max(0, Math.round(parseNum(d.standardGamesCount, 0)))
+      : 0,
+    rapidPlayed: d.rapidPlayed,
+    rapidDelta: d.rapidPlayed
+      ? Math.round(parseNum(d.rapidDelta, 0) * 10) / 10
+      : 0,
+    rapidGamesCount: d.rapidPlayed
+      ? Math.max(0, Math.round(parseNum(d.rapidGamesCount, 0)))
+      : 0,
+    blitzPlayed: d.blitzPlayed,
+    blitzDelta: d.blitzPlayed
+      ? Math.round(parseNum(d.blitzDelta, 0) * 10) / 10
+      : 0,
+    blitzGamesCount: d.blitzPlayed
+      ? Math.max(0, Math.round(parseNum(d.blitzGamesCount, 0)))
+      : 0,
+    fideRankNational: d.fideRankNational || 0,
+    notes: d.notes || '',
+  };
+}
+
 interface MonthlyCadenceCell {
   cadence: TimeControlCategory;
   hasActivity: boolean;
   delta: number;
+  isManualRecord: boolean;
   games: FideGame[];
   manualTournaments: Tournament[];
   recordFallback?: {
@@ -67,6 +188,18 @@ interface MonthlyCadenceCell {
     delta: number;
     notes: string;
   };
+}
+
+interface PendingMonthlySaveAction {
+  mode: 'add' | 'single' | 'bulk';
+  title: string;
+  subtitle: string;
+  itemLabel: string;
+  details: { label: string; value: string }[];
+  updates: Array<{
+    input: Omit<MonthlyRatingRecord, 'id' | 'ownerId'>;
+    existingId?: string;
+  }>;
 }
 
 interface StatisticsSectionProps {
@@ -78,8 +211,18 @@ interface StatisticsSectionProps {
     input: Omit<MonthlyRatingRecord, 'id' | 'ownerId'>,
     existingId?: string
   ) => Promise<void>;
+  onSaveRatingRecordsBulk: (
+    updates: Array<{
+      input: Omit<MonthlyRatingRecord, 'id' | 'ownerId'>;
+      existingId?: string;
+    }>
+  ) => Promise<void>;
   onDeleteRatingRecord: (id: string) => Promise<void>;
   onOpenProfileModal: () => void;
+  twoFactorAuth?: TwoFactorAuthConfig;
+  onUpdateTwoFactorAuth: (
+    next: TwoFactorAuthConfig | undefined
+  ) => Promise<void>;
 }
 
 export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
@@ -88,20 +231,45 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   tournaments = [],
   profile,
   onSaveRatingRecord,
+  onSaveRatingRecordsBulk,
   onDeleteRatingRecord,
   onOpenProfileModal,
+  twoFactorAuth,
+  onUpdateTwoFactorAuth,
 }) => {
-  const [editingRecordId, setEditingRecordId] = useState<string | undefined>(undefined);
-  const [period, setPeriod] = useState('2026-11');
-  const [standardElo, setStandardElo] = useState(profile.standardElo);
-  const [rapidElo, setRapidElo] = useState(profile.rapidElo);
-  const [blitzElo, setBlitzElo] = useState(profile.blitzElo);
-  const [standardGamesCount, setStandardGamesCount] = useState(5);
-  const [standardDelta, setStandardDelta] = useState(0);
-  const [fideRankNational, setFideRankNational] = useState(4120);
-  const [notes, setNotes] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [recordToDelete, setRecordToDelete] = useState<MonthlyRatingRecord | null>(null);
+  const editorSectionRef = useRef<HTMLDivElement | null>(null);
+
+  // Éditeur en ligne (par ligne ou tout le tableau)
+  const [isBulkEditMode, setIsBulkEditMode] = useState(false);
+  const [editingRowId, setEditingRowId] = useState<string | null>(null);
+  const [draftsById, setDraftsById] = useState<Record<string, MonthlyDraft>>({});
+
+  // Modale d'ajout d'un nouveau mois
+  const [isAddMonthOpen, setIsAddMonthOpen] = useState(false);
+  const [newMonthDraft, setNewMonthDraft] = useState<MonthlyDraft>(() => ({
+    id: '',
+    period: new Date().toISOString().slice(0, 7),
+    standardElo: String(profile.standardElo),
+    rapidElo: String(profile.rapidElo),
+    blitzElo: String(profile.blitzElo),
+    standardPlayed: true,
+    standardDelta: '0',
+    standardGamesCount: '0',
+    rapidPlayed: false,
+    rapidDelta: '0',
+    rapidGamesCount: '0',
+    blitzPlayed: false,
+    blitzDelta: '0',
+    blitzGamesCount: '0',
+    fideRankNational: 0,
+    notes: '',
+  }));
+
+  // Actions protégées par A2F Microsoft Authenticator
+  const [pendingMonthlySave, setPendingMonthlySave] =
+    useState<PendingMonthlySaveAction | null>(null);
+  const [recordToDelete, setRecordToDelete] =
+    useState<MonthlyRatingRecord | null>(null);
 
   // Simulateur Elo interactif
   const [simPlayerElo, setSimPlayerElo] = useState(profile.standardElo);
@@ -205,34 +373,50 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     ];
   }, [games, tournaments, sortedRatings, profile]);
 
-  // Tableau des variations d'Elo par mois et par cadence (Classique / Rapide / Blitz)
+  // Tableau des variations d'Elo par mois et par cadence :
+  // Un tournoi ou une partie joué(e) au mois M compte pour la mise à jour FIDE du mois suivant (M+1).
   const monthlyVariations = useMemo(() => {
     const periodSet = new Set<string>();
     const isValidPeriod = (p: string | undefined): p is string =>
       Boolean(p && /^\d{4}-\d{2}$/.test(p));
 
+    const tournamentFidePeriodMap = new Map<string, string>();
+    tournaments.forEach((t) => {
+      const fidePeriod = getFidePublicationPeriodFromDate(
+        t.endDate || t.startDate
+      );
+      if (isValidPeriod(fidePeriod)) {
+        tournamentFidePeriodMap.set(t.id, fidePeriod);
+      }
+    });
+
+    const getGameFidePeriod = (g: FideGame): string => {
+      if (g.tournamentId && tournamentFidePeriodMap.has(g.tournamentId)) {
+        return tournamentFidePeriodMap.get(g.tournamentId)!;
+      }
+      return getFidePublicationPeriodFromDate(g.datePlayed);
+    };
+
     games.forEach((g) => {
-      const p = g.datePlayed?.slice(0, 7);
+      const p = getGameFidePeriod(g);
       if (isValidPeriod(p)) periodSet.add(p);
     });
     tournaments.forEach((t) => {
-      if (
-        t.manualEloDelta !== undefined &&
-        t.manualEloDelta !== null &&
-        !Number.isNaN(Number(t.manualEloDelta))
-      ) {
-        const p = (t.endDate || t.startDate)?.slice(0, 7);
-        if (isValidPeriod(p)) periodSet.add(p);
-      }
+      const p = getFidePublicationPeriodFromDate(t.endDate || t.startDate);
+      if (isValidPeriod(p)) periodSet.add(p);
     });
     records.forEach((r) => {
       if (isValidPeriod(r.period)) periodSet.add(r.period);
     });
 
     const periods = Array.from(periodSet).sort((a, b) => b.localeCompare(a));
-    const ascRatings = [...records].sort((a, b) =>
-      a.period.localeCompare(b.period)
-    );
+    const recordsByPeriod = new Map<string, MonthlyRatingRecord>();
+    records.forEach((r) => {
+      if (isValidPeriod(r.period)) {
+        recordsByPeriod.set(r.period, r);
+      }
+    });
+
     const manualTournamentIds = new Set(
       tournaments
         .filter(
@@ -250,19 +434,45 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     ): MonthlyCadenceCell => {
       const periodGames = games
         .filter(
-          (g) => g.datePlayed.startsWith(period) && g.timeControl === cadence
+          (g) => getGameFidePeriod(g) === period && g.timeControl === cadence
         )
         .sort((a, b) => b.datePlayed.localeCompare(a.datePlayed));
 
       const manualTourneys = tournaments.filter(
         (t) =>
           t.timeControl === cadence &&
-          (t.endDate || t.startDate).startsWith(period) &&
+          getFidePublicationPeriodFromDate(t.endDate || t.startDate) ===
+            period &&
           t.manualEloDelta !== undefined &&
           t.manualEloDelta !== null &&
           !Number.isNaN(Number(t.manualEloDelta))
       );
 
+      const rec = recordsByPeriod.get(period);
+
+      // Si un relevé mensuel existe et que la cadence est marquée comme jouée manuellement,
+      // l'écart provient à 100% des valeurs saisies par l'utilisateur, tout en rattachant
+      // les parties & tournois du mois précédent à cette mise à jour FIDE.
+      if (rec && isCadencePlayed(rec, cadence)) {
+        const delta = getCadenceDelta(rec, cadence);
+        const gamesCount = getCadenceGamesCount(rec, cadence);
+
+        return {
+          cadence,
+          hasActivity: true,
+          delta,
+          isManualRecord: true,
+          games: periodGames,
+          manualTournaments: manualTourneys,
+          recordFallback: {
+            gamesCount,
+            delta,
+            notes: rec.notes || '',
+          },
+        };
+      }
+
+      // Tournois / parties joués le mois précédent (comptant pour cette liste FIDE)
       if (periodGames.length > 0 || manualTourneys.length > 0) {
         const gamesDelta = periodGames
           .filter((g) => !manualTournamentIds.has(g.tournamentId))
@@ -277,73 +487,17 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           cadence,
           hasActivity: true,
           delta: totalDelta,
+          isManualRecord: false,
           games: periodGames,
           manualTournaments: manualTourneys,
         };
-      }
-
-      const recIdx = ascRatings.findIndex((r) => r.period === period);
-      const rec = recIdx >= 0 ? ascRatings[recIdx] : undefined;
-      const prevRec = recIdx > 0 ? ascRatings[recIdx - 1] : undefined;
-
-      if (rec) {
-        if (
-          cadence === 'Standard' &&
-          (rec.standardDelta !== 0 || rec.standardGamesCount > 0)
-        ) {
-          return {
-            cadence,
-            hasActivity: true,
-            delta: Math.round(rec.standardDelta * 10) / 10,
-            games: [],
-            manualTournaments: [],
-            recordFallback: {
-              gamesCount: rec.standardGamesCount,
-              delta: rec.standardDelta,
-              notes: rec.notes,
-            },
-          };
-        }
-        if (cadence === 'Rapid' && prevRec) {
-          const diff = Math.round((rec.rapidElo - prevRec.rapidElo) * 10) / 10;
-          if (diff !== 0) {
-            return {
-              cadence,
-              hasActivity: true,
-              delta: diff,
-              games: [],
-              manualTournaments: [],
-              recordFallback: {
-                gamesCount: 0,
-                delta: diff,
-                notes: rec.notes || 'Écart mensuel Rapide (relevé FIDE)',
-              },
-            };
-          }
-        }
-        if (cadence === 'Blitz' && prevRec) {
-          const diff = Math.round((rec.blitzElo - prevRec.blitzElo) * 10) / 10;
-          if (diff !== 0) {
-            return {
-              cadence,
-              hasActivity: true,
-              delta: diff,
-              games: [],
-              manualTournaments: [],
-              recordFallback: {
-                gamesCount: 0,
-                delta: diff,
-                notes: rec.notes || 'Écart mensuel Blitz (relevé FIDE)',
-              },
-            };
-          }
-        }
       }
 
       return {
         cadence,
         hasActivity: false,
         delta: 0,
+        isManualRecord: Boolean(rec),
         games: [],
         manualTournaments: [],
       };
@@ -352,6 +506,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     return periods.map((period) => ({
       period,
       label: formatFideMatrixPeriod(period),
+      record: recordsByPeriod.get(period),
       Standard: buildCell(period, 'Standard'),
       Rapid: buildCell(period, 'Rapid'),
       Blitz: buildCell(period, 'Blitz'),
@@ -367,6 +522,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     return {
       period: row.period,
       periodLabel: row.label,
+      record: row.record,
       cell: row[selectedVariationCell.cadence],
     };
   }, [selectedVariationCell, monthlyVariations]);
@@ -444,51 +600,178 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     return Array.from(map.values()).sort((a, b) => b.count - a.count);
   }, [games]);
 
-  const handleEditRecord = (r: MonthlyRatingRecord) => {
-    setEditingRecordId(r.id);
-    setPeriod(r.period);
-    setStandardElo(r.standardElo);
-    setRapidElo(r.rapidElo);
-    setBlitzElo(r.blitzElo);
-    setStandardGamesCount(r.standardGamesCount);
-    setStandardDelta(r.standardDelta);
-    setFideRankNational(r.fideRankNational);
-    setNotes(r.notes);
+  // Helpers pour l'éditeur pratique des données du mois
+  const startRowEdit = (r: MonthlyRatingRecord) => {
+    setIsBulkEditMode(false);
+    setEditingRowId(r.id);
+    setDraftsById({ [r.id]: recordToDraft(r) });
   };
 
-  const handleResetForm = () => {
-    setEditingRecordId(undefined);
-    setPeriod('2026-11');
-    setStandardElo(profile.standardElo);
-    setRapidElo(profile.rapidElo);
-    setBlitzElo(profile.blitzElo);
-    setStandardGamesCount(5);
-    setStandardDelta(0);
-    setFideRankNational(4120);
-    setNotes('');
+  const cancelRowEdit = () => {
+    setEditingRowId(null);
+    setDraftsById({});
   };
 
-  const handleAddRecord = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
-    try {
-      await onSaveRatingRecord(
-        {
-          period,
-          standardElo: Number(standardElo),
-          rapidElo: Number(rapidElo),
-          blitzElo: Number(blitzElo),
-          standardGamesCount: Number(standardGamesCount),
-          standardDelta: Number(standardDelta),
-          fideRankNational: Number(fideRankNational),
-          notes,
-        },
-        editingRecordId
-      );
-      handleResetForm();
-    } finally {
-      setIsSaving(false);
+  const toggleBulkEditMode = () => {
+    if (isBulkEditMode) {
+      setIsBulkEditMode(false);
+      setDraftsById({});
+      return;
     }
+    const nextDrafts: Record<string, MonthlyDraft> = {};
+    sortedRatings.forEach((r) => {
+      nextDrafts[r.id] = recordToDraft(r);
+    });
+    setEditingRowId(null);
+    setDraftsById(nextDrafts);
+    setIsBulkEditMode(true);
+  };
+
+  const updateRowDraft = (id: string, patch: Partial<MonthlyDraft>) => {
+    setDraftsById((prev) => {
+      const existing = prev[id];
+      if (!existing) return prev;
+      return {
+        ...prev,
+        [id]: { ...existing, ...patch },
+      };
+    });
+  };
+
+  const changedBulkRecords = useMemo(() => {
+    if (!isBulkEditMode) return [];
+    return sortedRatings.filter((r) => {
+      const draft = draftsById[r.id];
+      if (!draft) return false;
+      const orig = recordToDraft(r);
+      return JSON.stringify(orig) !== JSON.stringify(draft);
+    });
+  }, [isBulkEditMode, sortedRatings, draftsById]);
+
+  const openAddMonthModal = (prefillPeriod?: string) => {
+    const latest = sortedRatings[0];
+    setNewMonthDraft({
+      id: '',
+      period: prefillPeriod || new Date().toISOString().slice(0, 7),
+      standardElo: String(latest?.standardElo ?? profile.standardElo),
+      rapidElo: String(latest?.rapidElo ?? profile.rapidElo),
+      blitzElo: String(latest?.blitzElo ?? profile.blitzElo),
+      standardPlayed: true,
+      standardDelta: '0',
+      standardGamesCount: '0',
+      rapidPlayed: false,
+      rapidDelta: '0',
+      rapidGamesCount: '0',
+      blitzPlayed: false,
+      blitzDelta: '0',
+      blitzGamesCount: '0',
+      fideRankNational: latest?.fideRankNational ?? 0,
+      notes: '',
+    });
+    setIsAddMonthOpen(true);
+  };
+
+  const jumpToEditMonth = (periodTarget: string) => {
+    const existing = sortedRatings.find((r) => r.period === periodTarget);
+    if (existing) {
+      startRowEdit(existing);
+      editorSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    } else {
+      openAddMonthModal(periodTarget);
+    }
+  };
+
+  const requestSaveSingleRowWith2fa = (r: MonthlyRatingRecord) => {
+    const draft = draftsById[r.id];
+    if (!draft) return;
+    const input = draftToRecordInput(draft);
+    const fmt = (played: boolean | undefined, val: number | undefined) =>
+      !played ? 'Aucune' : (val ?? 0) >= 0 ? `+${val ?? 0}` : String(val ?? 0);
+
+    setPendingMonthlySave({
+      mode: 'single',
+      title: `Enregistrer les modifications de ${formatPeriodLabel(input.period)} ?`,
+      subtitle:
+        'La modification des Elos et écarts mensuels est protégée par Microsoft Authenticator (A2F).',
+      itemLabel: formatPeriodLabel(input.period),
+      details: [
+        {
+          label: 'Classique',
+          value: `${input.standardElo} (${fmt(input.standardPlayed, input.standardDelta)})`,
+        },
+        {
+          label: 'Rapide',
+          value: `${input.rapidElo} (${fmt(input.rapidPlayed, input.rapidDelta)})`,
+        },
+        {
+          label: 'Blitz',
+          value: `${input.blitzElo} (${fmt(input.blitzPlayed, input.blitzDelta)})`,
+        },
+      ],
+      updates: [{ input, existingId: r.id }],
+    });
+  };
+
+  const requestBulkSaveWith2fa = () => {
+    if (changedBulkRecords.length === 0) return;
+    const updates = changedBulkRecords.map((r) => ({
+      input: draftToRecordInput(draftsById[r.id]),
+      existingId: r.id,
+    }));
+
+    setPendingMonthlySave({
+      mode: 'bulk',
+      title: `Enregistrer ${updates.length} mois modifié${
+        updates.length > 1 ? 's' : ''
+      } ?`,
+      subtitle:
+        'Toutes vos modifications d’Elos et d’écarts mensuels vont être sauvegardées après validation A2F.',
+      itemLabel: updates
+        .map((u) => formatFideMatrixPeriod(u.input.period))
+        .join(' · '),
+      details: updates.slice(0, 4).map((u) => ({
+        label: formatFideMatrixPeriod(u.input.period),
+        value: `Std ${u.input.standardElo} (${
+          u.input.standardPlayed
+            ? (u.input.standardDelta >= 0 ? '+' : '') + u.input.standardDelta
+            : '—'
+        }) · Rap ${u.input.rapidElo} · Blz ${u.input.blitzElo}`,
+      })),
+      updates,
+    });
+  };
+
+  const handleSubmitNewMonthModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    const input = draftToRecordInput(newMonthDraft);
+    const fmt = (played: boolean | undefined, val: number | undefined) =>
+      !played ? 'Aucune' : (val ?? 0) >= 0 ? `+${val ?? 0}` : String(val ?? 0);
+
+    setPendingMonthlySave({
+      mode: 'add',
+      title: `Ajouter les données du mois (${formatPeriodLabel(input.period)}) ?`,
+      subtitle:
+        'L’ajout d’une nouvelle période mensuelle nécessite votre code Microsoft Authenticator (A2F).',
+      itemLabel: formatPeriodLabel(input.period),
+      details: [
+        {
+          label: 'Classique',
+          value: `${input.standardElo} (${fmt(input.standardPlayed, input.standardDelta)})`,
+        },
+        {
+          label: 'Rapide',
+          value: `${input.rapidElo} (${fmt(input.rapidPlayed, input.rapidDelta)})`,
+        },
+        {
+          label: 'Blitz',
+          value: `${input.blitzElo} (${fmt(input.blitzPlayed, input.blitzDelta)})`,
+        },
+      ],
+      updates: [{ input }],
+    });
   };
 
   const simWinDelta = calculateFideEloChange(simPlayerElo, simOppElo, 1, simKFactor);
@@ -626,12 +909,14 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               Variations d’Elo par mois & cadence
             </h2>
             <p className="text-xs text-[#9BA7B8] mt-0.5">
-              Bilan mensuel par cadence (Classique, Rapide, Blitz) — cliquez sur « Voir » pour consulter les parties.
+              Les tournois joués un mois comptent pour la liste FIDE du mois suivant (ex. sept. → oct.) — cliquez sur « Voir » ou « Modifier ».
             </p>
           </div>
-          <span className="text-[11px] font-mono text-[#6C788B]">
-            {monthlyVariations.length} période{monthlyVariations.length > 1 ? 's' : ''}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono text-[#6C788B]">
+              {monthlyVariations.length} période{monthlyVariations.length > 1 ? 's' : ''}
+            </span>
+          </div>
         </div>
 
         {monthlyVariations.length === 0 ? (
@@ -651,6 +936,14 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                     <span className="font-mono font-bold text-sm text-[#F1F4F8]">
                       {row.label}
                     </span>
+                    <button
+                      type="button"
+                      onClick={() => jumpToEditMonth(row.period)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-[#19202B] border border-[#2B3647] text-[11px] font-semibold text-[#CBD5E1] cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3" />
+                      <span>{row.record ? 'Éditer' : 'Saisir'}</span>
+                    </button>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     {(
@@ -680,9 +973,9 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                         <button
                           key={item.cad}
                           type="button"
-                          disabled={!cell.hasActivity}
+                          disabled={!cell.hasActivity && cell.games.length === 0}
                           onClick={() => {
-                            if (!cell.hasActivity) return;
+                            if (!cell.hasActivity && cell.games.length === 0) return;
                             setSelectedVariationCell(
                               isSelected
                                 ? null
@@ -690,7 +983,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                             );
                           }}
                           className={`p-2 rounded-xl border text-left transition-colors ${
-                            !cell.hasActivity
+                            !cell.hasActivity && cell.games.length === 0
                               ? 'bg-[#0F131A]/70 border-[#232C3A] opacity-60 cursor-default'
                               : isSelected
                               ? 'bg-emerald-500/15 border-emerald-500/50 cursor-pointer'
@@ -750,6 +1043,9 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                     </th>
                     <th className="py-3 px-5 bg-sky-500/12 text-sky-400 border-l border-[#232C3A] text-center">
                       Blitz
+                    </th>
+                    <th className="py-3 px-4 bg-[#0F131A] text-[#6C788B] border-l border-[#232C3A] text-right w-24">
+                      Éditer
                     </th>
                   </tr>
                 </thead>
@@ -831,6 +1127,16 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                           );
                         }
                       )}
+                      <td className="py-3 px-4 border-l border-[#232C3A]/70 text-right whitespace-nowrap">
+                        <button
+                          type="button"
+                          onClick={() => jumpToEditMonth(row.period)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-[#19202B] hover:bg-[#232C3A] border border-[#2B3647] text-[11px] font-semibold text-[#CBD5E1] cursor-pointer"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>{row.record ? 'Modifier' : 'Saisir'}</span>
+                        </button>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -841,7 +1147,7 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
             {activeVariationDetail && (
               <div className="border-t border-[#232C3A] bg-[#0F131A] p-4 sm:p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
+                  <div className="flex flex-wrap items-center gap-2.5">
                     <span className="font-mono font-bold text-sm text-[#F1F4F8]">
                       {activeVariationDetail.periodLabel}
                     </span>
@@ -877,17 +1183,46 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                         ? `▼ ${activeVariationDetail.cell.delta.toFixed(1)} pts`
                         : '0.0 pt'}
                     </span>
+                    {activeVariationDetail.cell.isManualRecord && (
+                      <span className="px-2 py-0.5 rounded-md bg-[#19202B] border border-[#2B3647] text-[10px] font-mono text-[#9BA7B8]">
+                        Écart manuel
+                      </span>
+                    )}
                   </div>
 
-                  <IconButton
-                    label="Fermer le détail mensuel"
-                    variant="ghost"
-                    size="xs"
-                    onClick={() => setSelectedVariationCell(null)}
-                  >
-                    <X className="w-4 h-4" />
-                  </IconButton>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => jumpToEditMonth(activeVariationDetail.period)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#19202B] hover:bg-[#232C3A] border border-[#2B3647] text-[11px] font-semibold text-[#F1F4F8] cursor-pointer"
+                    >
+                      <Edit3 className="w-3 h-3 text-emerald-400" />
+                      <span>Modifier cet écart</span>
+                    </button>
+                    <IconButton
+                      label="Fermer le détail mensuel"
+                      variant="ghost"
+                      size="xs"
+                      onClick={() => setSelectedVariationCell(null)}
+                    >
+                      <X className="w-4 h-4" />
+                    </IconButton>
+                  </div>
                 </div>
+
+                {(activeVariationDetail.cell.games.length > 0 ||
+                  activeVariationDetail.cell.manualTournaments.length > 0) && (
+                  <div className="text-[11px] text-[#9BA7B8] flex items-center gap-1.5">
+                    <Calendar className="w-3.5 h-3.5 text-[#D4A853] shrink-0" />
+                    <span>
+                      Parties et tournois pris en compte pour la liste FIDE de{' '}
+                      <strong className="text-[#F1F4F8]">
+                        {formatPeriodLabel(activeVariationDetail.period)}
+                      </strong>{' '}
+                      (joués le mois précédent).
+                    </span>
+                  </div>
+                )}
 
                 {activeVariationDetail.cell.manualTournaments.length > 0 && (
                   <div className="space-y-2">
@@ -1426,275 +1761,292 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
         </div>
       )}
 
-      {/* 5. Historique et ajout des relevés mensuels officiels FIDE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-        <div className="lg:col-span-4 bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4">
-          <div className="flex items-center justify-between gap-2 border-b border-[#232C3A] pb-3">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-emerald-400" />
-              <h3 className="font-display text-sm font-bold text-[#F1F4F8]">
-                {editingRecordId
-                  ? 'Modifier le relevé mensuel'
-                  : 'Ajouter un relevé mensuel'}
-              </h3>
-            </div>
-            {editingRecordId && (
-              <IconButton
-                label="Annuler la modification"
-                variant="ghost"
-                size="xs"
-                onClick={handleResetForm}
-              >
-                <X className="w-3.5 h-3.5" />
-              </IconButton>
-            )}
+      {/* 5. TABLEAU PRATIQUE D'ÉDITION DES DONNÉES DU MOIS & ÉCARTS MANUELS (Protégé par A2F) */}
+      <div
+        ref={editorSectionRef}
+        className="bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden"
+      >
+        <div className="px-4 sm:px-5 py-4 border-b border-[#232C3A] bg-[#0F131A] flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="font-display text-sm sm:text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <Table2 className="w-4 h-4 text-emerald-400" />
+              <span>
+                Tableau d’édition des données du mois ({sortedRatings.length})
+              </span>
+            </h3>
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Modifiez directement vos Elos et vos écarts manuels (Classique,
+              Rapide, Blitz). Chaque enregistrement est protégé par Microsoft
+              Authenticator (A2F).
+            </p>
           </div>
 
-          <form onSubmit={handleAddRecord} className="space-y-3 text-xs">
-            <div>
-              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Mois (YYYY-MM)</label>
-              <input
-                type="month"
-                required
-                value={period}
-                onChange={(e) => setPeriod(e.target.value)}
-                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
-              />
-            </div>
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={toggleBulkEditMode}
+              disabled={sortedRatings.length === 0}
+              className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer disabled:opacity-50 ${
+                isBulkEditMode
+                  ? 'bg-[#D4A853]/15 border-[#D4A853]/40 text-[#D4A853]'
+                  : 'bg-[#19202B] hover:bg-[#232C3A] border-[#2B3647] text-[#F1F4F8]'
+              }`}
+            >
+              {isBulkEditMode ? (
+                <>
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Quitter mode tableau</span>
+                </>
+              ) : (
+                <>
+                  <Edit3 className="w-3.5 h-3.5 text-[#D4A853]" />
+                  <span>Tout modifier en tableau</span>
+                </>
+              )}
+            </button>
 
-            <div className="grid grid-cols-3 gap-2">
-              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
-                <label className="block font-semibold text-emerald-400 mb-1">Classique</label>
-                <input
-                  type="number"
-                  required
-                  value={standardElo}
-                  onChange={(e) => setStandardElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
-                />
-              </div>
-              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
-                <label className="block font-semibold text-[#D4A853] mb-1">Rapide</label>
-                <input
-                  type="number"
-                  required
-                  value={rapidElo}
-                  onChange={(e) => setRapidElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
-                />
-              </div>
-              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
-                <label className="block font-semibold text-sky-400 mb-1">Blitz</label>
-                <input
-                  type="number"
-                  required
-                  value={blitzElo}
-                  onChange={(e) => setBlitzElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
-                  Parties du mois
-                </label>
-                <input
-                  type="number"
-                  min={0}
-                  value={standardGamesCount}
-                  onChange={(e) => setStandardGamesCount(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8]"
-                />
-              </div>
-              <div>
-                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
-                  Variation Elo
-                </label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={standardDelta}
-                  onChange={(e) => setStandardDelta(Number(e.target.value))}
-                  className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8]"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Note</label>
-              <input
-                type="text"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Ex: Liste FIDE Novembre"
-                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8] placeholder:text-[#6C788B]"
-              />
-            </div>
-
-            <div className="flex justify-end pt-1">
-              <IconButton
-                type="submit"
-                label={
-                  isSaving
-                    ? 'Enregistrement...'
-                    : editingRecordId
-                    ? 'Mettre à jour ce relevé'
-                    : 'Enregistrer ce relevé mensuel'
-                }
-                variant="primary"
-                size="md"
-                disabled={isSaving}
-              >
-                {editingRecordId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
-              </IconButton>
-            </div>
-          </form>
+            <button
+              type="button"
+              onClick={() => openAddMonthModal()}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Nouveau mois (A2F)</span>
+            </button>
+          </div>
         </div>
 
-        <div className="lg:col-span-8 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
-          <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A]">
-            <h3 className="font-display text-sm font-bold text-[#F1F4F8]">
-              Historique des publications mensuelles ({sortedRatings.length})
-            </h3>
+        {/* Barre d'action globale en mode édition tableau */}
+        {isBulkEditMode && (
+          <div className="px-4 sm:px-5 py-3 bg-[#19202B] border-b border-[#2B3647] flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs text-[#CBD5E1] flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+              <span>
+                Mode édition rapide activé :{' '}
+                <strong className="font-mono text-emerald-400">
+                  {changedBulkRecords.length}
+                </strong>{' '}
+                mois modifié{changedBulkRecords.length > 1 ? 's' : ''}.
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleBulkEditMode}
+                className="px-3 py-1.5 rounded-lg bg-[#131820] border border-[#2B3647] text-xs font-semibold text-[#CBD5E1] hover:text-white cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={changedBulkRecords.length === 0}
+                onClick={requestBulkSaveWith2fa}
+                className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-[#131820] disabled:text-[#6C788B] disabled:border disabled:border-[#232C3A] text-white text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>
+                  Enregistrer ({changedBulkRecords.length}) avec A2F
+                </span>
+              </button>
+            </div>
           </div>
-          {/* Historique mensuel mobile (< 768px) */}
-          <div className="md:hidden divide-y divide-[#232C3A] text-xs">
-            {sortedRatings.map((r) => (
-              <div key={r.id} className="p-4 space-y-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="font-semibold text-sm text-[#F1F4F8]">
-                      {formatPeriodLabel(r.period)}
-                    </div>
-                    <div className="text-[11px] text-[#9BA7B8] font-mono mt-0.5">
-                      {r.standardGamesCount} partie(s) ·{' '}
-                      <span
-                        className={`font-bold ${
-                          r.standardDelta >= 0
-                            ? 'text-emerald-400'
-                            : 'text-rose-400'
-                        }`}
-                      >
-                        {r.standardDelta >= 0
-                          ? `+${r.standardDelta}`
-                          : r.standardDelta}{' '}
-                        pts
-                      </span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <IconButton
-                      label="Modifier ce relevé"
-                      variant="ghost"
-                      size="xs"
-                      onClick={() => handleEditRecord(r)}
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                    </IconButton>
-                    <IconButton
-                      label="Supprimer ce relevé"
-                      variant="danger"
-                      size="xs"
-                      onClick={() => setRecordToDelete(r)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </IconButton>
-                  </div>
-                </div>
+        )}
 
-                <div className="grid grid-cols-3 gap-2 font-mono text-center">
-                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
-                    <div className="text-[10px] font-sans text-[#6C788B]">
-                      Classique
-                    </div>
-                    <div className="font-bold text-emerald-400 mt-0.5">
-                      {r.standardElo}
-                    </div>
-                  </div>
-                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
-                    <div className="text-[10px] font-sans text-[#6C788B]">
-                      Rapide
-                    </div>
-                    <div className="font-bold text-[#D4A853] mt-0.5">
-                      {r.rapidElo}
-                    </div>
-                  </div>
-                  <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
-                    <div className="text-[10px] font-sans text-[#6C788B]">
-                      Blitz
-                    </div>
-                    <div className="font-bold text-sky-400 mt-0.5">
-                      {r.blitzElo}
-                    </div>
-                  </div>
-                </div>
-
-                {r.notes && (
-                  <div className="text-[11px] text-[#9BA7B8]">{r.notes}</div>
-                )}
-              </div>
-            ))}
+        {sortedRatings.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[#6C788B]">
+            Aucun mois enregistré. Cliquez sur « Nouveau mois (A2F) » pour
+            démarrer votre tableau mensuel.
           </div>
+        ) : (
+          <>
+            {/* VUE MOBILE : Cartes mensuelles avec édition en ligne (< 1024px) */}
+            <div className="lg:hidden divide-y divide-[#232C3A] text-xs">
+              {sortedRatings.map((r) => {
+                const isEditing = isBulkEditMode || editingRowId === r.id;
+                const draft = draftsById[r.id];
 
-          {/* Historique mensuel desktop (>= 768px) */}
-          <div className="hidden md:block overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
-                  <th className="py-3 px-4">Mois</th>
-                  <th className="py-3 px-4 text-right text-emerald-400">Classique</th>
-                  <th className="py-3 px-4 text-right text-[#D4A853]">Rapide</th>
-                  <th className="py-3 px-4 text-right text-sky-400">Blitz</th>
-                  <th className="py-3 px-4 text-right">Variation</th>
-                  <th className="py-3 px-4 text-center">Parties</th>
-                  <th className="py-3 px-4">Notes</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-[#232C3A] text-xs">
-                {sortedRatings.map((r) => (
-                  <tr key={r.id} className="hover:bg-[#19202B]">
-                    <td className="py-3 px-4 font-semibold text-[#F1F4F8]">
-                      {formatPeriodLabel(r.period)}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-emerald-400">
-                      {r.standardElo}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-[#D4A853]">
-                      {r.rapidElo}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-sky-400">
-                      {r.blitzElo}
-                    </td>
-                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold">
-                      <span
-                        className={
-                          r.standardDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                if (isEditing && draft) {
+                  return (
+                    <div
+                      key={r.id}
+                      className="p-4 space-y-3 bg-[#19202B]/70 border-l-2 border-emerald-500"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <input
+                          type="month"
+                          value={draft.period}
+                          onChange={(e) =>
+                            updateRowDraft(r.id, { period: e.target.value })
+                          }
+                          className="px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
+                        />
+                        {!isBulkEditMode && (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={cancelRowEdit}
+                              className="px-2.5 py-1.5 rounded-lg bg-[#131820] border border-[#2B3647] text-[#CBD5E1] font-semibold cursor-pointer"
+                            >
+                              Annuler
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => requestSaveSingleRowWith2fa(r)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 text-white font-bold cursor-pointer"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>A2F</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        {(
+                          [
+                            {
+                              label: 'Classique',
+                              color: 'text-emerald-400',
+                              eloKey: 'standardElo' as const,
+                              playedKey: 'standardPlayed' as const,
+                              deltaKey: 'standardDelta' as const,
+                              gamesKey: 'standardGamesCount' as const,
+                            },
+                            {
+                              label: 'Rapide',
+                              color: 'text-[#D4A853]',
+                              eloKey: 'rapidElo' as const,
+                              playedKey: 'rapidPlayed' as const,
+                              deltaKey: 'rapidDelta' as const,
+                              gamesKey: 'rapidGamesCount' as const,
+                            },
+                            {
+                              label: 'Blitz',
+                              color: 'text-sky-400',
+                              eloKey: 'blitzElo' as const,
+                              playedKey: 'blitzPlayed' as const,
+                              deltaKey: 'blitzDelta' as const,
+                              gamesKey: 'blitzGamesCount' as const,
+                            },
+                          ]
+                        ).map((cad) => {
+                          const played = draft[cad.playedKey];
+                          return (
+                            <div
+                              key={cad.label}
+                              className="p-2.5 rounded-xl bg-[#131820] border border-[#263142] space-y-2"
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className={`font-bold ${cad.color}`}>
+                                  {cad.label}
+                                </span>
+                                <label className="inline-flex items-center gap-1.5 text-[11px] text-[#9BA7B8] cursor-pointer">
+                                  <input
+                                    type="checkbox"
+                                    checked={played}
+                                    onChange={(e) =>
+                                      updateRowDraft(r.id, {
+                                        [cad.playedKey]: e.target.checked,
+                                      })
+                                    }
+                                    className="rounded border-[#323E52] bg-[#19202B] text-emerald-500"
+                                  />
+                                  <span>Joué</span>
+                                </label>
+                              </div>
+                              <div className="grid grid-cols-3 gap-1.5 font-mono">
+                                <div>
+                                  <div className="text-[10px] font-sans text-[#6C788B]">
+                                    Elo
+                                  </div>
+                                  <input
+                                    type="number"
+                                    value={draft[cad.eloKey]}
+                                    onChange={(e) =>
+                                      updateRowDraft(r.id, {
+                                        [cad.eloKey]: e.target.value,
+                                      })
+                                    }
+                                    className="w-full px-2 py-1 bg-[#19202B] border border-[#2B3647] rounded-lg text-[#F1F4F8] font-bold"
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] font-sans text-[#6C788B]">
+                                    Écart
+                                  </div>
+                                  <input
+                                    type="number"
+                                    step="0.1"
+                                    disabled={!played}
+                                    value={played ? draft[cad.deltaKey] : '0'}
+                                    onChange={(e) =>
+                                      updateRowDraft(r.id, {
+                                        [cad.deltaKey]: e.target.value,
+                                      })
+                                    }
+                                    className="w-full px-2 py-1 bg-[#19202B] border border-[#2B3647] rounded-lg text-[#F1F4F8] font-bold disabled:opacity-40"
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-[10px] font-sans text-[#6C788B]">
+                                    Parties
+                                  </div>
+                                  <input
+                                    type="number"
+                                    min={0}
+                                    disabled={!played}
+                                    value={played ? draft[cad.gamesKey] : '0'}
+                                    onChange={(e) =>
+                                      updateRowDraft(r.id, {
+                                        [cad.gamesKey]: e.target.value,
+                                      })
+                                    }
+                                    className="w-full px-2 py-1 bg-[#19202B] border border-[#2B3647] rounded-lg text-[#CBD5E1] disabled:opacity-40"
+                                  />
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      <input
+                        type="text"
+                        value={draft.notes}
+                        onChange={(e) =>
+                          updateRowDraft(r.id, { notes: e.target.value })
                         }
-                      >
-                        {r.standardDelta >= 0
-                          ? `+${r.standardDelta}`
-                          : r.standardDelta}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-center font-mono tabular-nums text-[#CBD5E1]">
-                      {r.standardGamesCount}
-                    </td>
-                    <td className="py-3 px-4 text-[#9BA7B8]">{r.notes || '—'}</td>
-                    <td className="py-3 px-4 text-right whitespace-nowrap">
-                      <div className="inline-flex items-center gap-1">
+                        placeholder="Note du mois..."
+                        className="w-full px-3 py-2 bg-[#131820] border border-[#2B3647] rounded-xl text-[#F1F4F8] placeholder:text-[#6C788B]"
+                      />
+                    </div>
+                  );
+                }
+
+                const stdPlayed = isCadencePlayed(r, 'Standard');
+                const rapPlayed = isCadencePlayed(r, 'Rapid');
+                const blzPlayed = isCadencePlayed(r, 'Blitz');
+                const stdDelta = getCadenceDelta(r, 'Standard');
+                const rapDelta = getCadenceDelta(r, 'Rapid');
+                const blzDelta = getCadenceDelta(r, 'Blitz');
+
+                return (
+                  <div key={r.id} className="p-4 space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-semibold text-sm text-[#F1F4F8]">
+                        {formatPeriodLabel(r.period)}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
                         <IconButton
-                          label="Modifier ce relevé"
+                          label="Modifier ce mois (écarts & Elos)"
                           variant="ghost"
                           size="xs"
-                          onClick={() => handleEditRecord(r)}
+                          onClick={() => startRowEdit(r)}
                         >
-                          <Edit3 className="w-3.5 h-3.5" />
+                          <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
                         </IconButton>
                         <IconButton
-                          label="Supprimer ce relevé"
+                          label="Supprimer ce relevé (A2F)"
                           variant="danger"
                           size="xs"
                           onClick={() => setRecordToDelete(r)}
@@ -1702,21 +2054,662 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                           <Trash2 className="w-3.5 h-3.5" />
                         </IconButton>
                       </div>
-                    </td>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 font-mono text-center">
+                      <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                        <div className="text-[10px] font-sans text-[#6C788B]">
+                          Classique
+                        </div>
+                        <div className="font-bold text-emerald-400 mt-0.5">
+                          {r.standardElo}
+                        </div>
+                        <div
+                          className={`text-[10px] font-bold mt-0.5 ${
+                            !stdPlayed
+                              ? 'text-[#6C788B]'
+                              : stdDelta > 0
+                              ? 'text-emerald-300'
+                              : stdDelta < 0
+                              ? 'text-rose-400'
+                              : 'text-[#9BA7B8]'
+                          }`}
+                        >
+                          {!stdPlayed
+                            ? 'Aucune'
+                            : stdDelta >= 0
+                            ? `+${stdDelta}`
+                            : stdDelta}
+                        </div>
+                      </div>
+                      <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                        <div className="text-[10px] font-sans text-[#6C788B]">
+                          Rapide
+                        </div>
+                        <div className="font-bold text-[#D4A853] mt-0.5">
+                          {r.rapidElo}
+                        </div>
+                        <div
+                          className={`text-[10px] font-bold mt-0.5 ${
+                            !rapPlayed
+                              ? 'text-[#6C788B]'
+                              : rapDelta > 0
+                              ? 'text-emerald-300'
+                              : rapDelta < 0
+                              ? 'text-rose-400'
+                              : 'text-[#9BA7B8]'
+                          }`}
+                        >
+                          {!rapPlayed
+                            ? 'Aucune'
+                            : rapDelta >= 0
+                            ? `+${rapDelta}`
+                            : rapDelta}
+                        </div>
+                      </div>
+                      <div className="py-1.5 px-2 rounded-lg bg-[#19202B] border border-[#232C3A]">
+                        <div className="text-[10px] font-sans text-[#6C788B]">
+                          Blitz
+                        </div>
+                        <div className="font-bold text-sky-400 mt-0.5">
+                          {r.blitzElo}
+                        </div>
+                        <div
+                          className={`text-[10px] font-bold mt-0.5 ${
+                            !blzPlayed
+                              ? 'text-[#6C788B]'
+                              : blzDelta > 0
+                              ? 'text-emerald-300'
+                              : blzDelta < 0
+                              ? 'text-rose-400'
+                              : 'text-[#9BA7B8]'
+                          }`}
+                        >
+                          {!blzPlayed
+                            ? 'Aucune'
+                            : blzDelta >= 0
+                            ? `+${blzDelta}`
+                            : blzDelta}
+                        </div>
+                      </div>
+                    </div>
+
+                    {r.notes && (
+                      <div className="text-[11px] text-[#9BA7B8]">{r.notes}</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* VUE DESKTOP : Grand tableau pratique type feuille de calcul (>= 1024px) */}
+            <div className="hidden lg:block overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
+                    <th className="py-3 px-4">Mois</th>
+                    <th className="py-3 px-3 text-emerald-400 border-l border-[#232C3A]">
+                      Classique (Elo · Écart)
+                    </th>
+                    <th className="py-3 px-3 text-[#D4A853] border-l border-[#232C3A]">
+                      Rapide (Elo · Écart)
+                    </th>
+                    <th className="py-3 px-3 text-sky-400 border-l border-[#232C3A]">
+                      Blitz (Elo · Écart)
+                    </th>
+                    <th className="py-3 px-3 border-l border-[#232C3A]">
+                      Notes
+                    </th>
+                    <th className="py-3 px-4 text-right border-l border-[#232C3A]">
+                      Actions
+                    </th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-[#232C3A] text-xs">
+                  {sortedRatings.map((r) => {
+                    const isEditing = isBulkEditMode || editingRowId === r.id;
+                    const draft = draftsById[r.id];
+
+                    if (isEditing && draft) {
+                      return (
+                        <tr
+                          key={r.id}
+                          className="bg-[#19202B]/70 border-l-2 border-emerald-500"
+                        >
+                          <td className="py-3 px-4 align-top">
+                            <input
+                              type="month"
+                              value={draft.period}
+                              onChange={(e) =>
+                                updateRowDraft(r.id, { period: e.target.value })
+                              }
+                              className="w-36 px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
+                            />
+                          </td>
+
+                          {(
+                            [
+                              {
+                                eloKey: 'standardElo' as const,
+                                playedKey: 'standardPlayed' as const,
+                                deltaKey: 'standardDelta' as const,
+                                gamesKey: 'standardGamesCount' as const,
+                                accent: 'focus:border-emerald-500',
+                              },
+                              {
+                                eloKey: 'rapidElo' as const,
+                                playedKey: 'rapidPlayed' as const,
+                                deltaKey: 'rapidDelta' as const,
+                                gamesKey: 'rapidGamesCount' as const,
+                                accent: 'focus:border-[#D4A853]',
+                              },
+                              {
+                                eloKey: 'blitzElo' as const,
+                                playedKey: 'blitzPlayed' as const,
+                                deltaKey: 'blitzDelta' as const,
+                                gamesKey: 'blitzGamesCount' as const,
+                                accent: 'focus:border-sky-400',
+                              },
+                            ]
+                          ).map((cad, idx) => {
+                            const played = draft[cad.playedKey];
+                            return (
+                              <td
+                                key={idx}
+                                className="py-2.5 px-3 border-l border-[#232C3A] align-top"
+                              >
+                                <div className="space-y-1.5 min-w-[180px]">
+                                  <div className="flex items-center gap-1.5 font-mono">
+                                    <input
+                                      type="number"
+                                      title="Elo"
+                                      value={draft[cad.eloKey]}
+                                      onChange={(e) =>
+                                        updateRowDraft(r.id, {
+                                          [cad.eloKey]: e.target.value,
+                                        })
+                                      }
+                                      className={`w-20 px-2 py-1 bg-[#131820] border border-[#2B3647] rounded-lg font-bold text-[#F1F4F8] focus:outline-none ${cad.accent}`}
+                                    />
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      title="Écart (+/-)"
+                                      disabled={!played}
+                                      value={played ? draft[cad.deltaKey] : '0'}
+                                      onChange={(e) =>
+                                        updateRowDraft(r.id, {
+                                          [cad.deltaKey]: e.target.value,
+                                        })
+                                      }
+                                      placeholder="Écart"
+                                      className={`w-20 px-2 py-1 bg-[#131820] border border-[#2B3647] rounded-lg font-bold text-[#F1F4F8] disabled:opacity-40 focus:outline-none ${cad.accent}`}
+                                    />
+                                    <input
+                                      type="number"
+                                      min={0}
+                                      title="Nombre de parties"
+                                      disabled={!played}
+                                      value={played ? draft[cad.gamesKey] : '0'}
+                                      onChange={(e) =>
+                                        updateRowDraft(r.id, {
+                                          [cad.gamesKey]: e.target.value,
+                                        })
+                                      }
+                                      placeholder="P."
+                                      className="w-14 px-1.5 py-1 bg-[#131820] border border-[#2B3647] rounded-lg text-[#CBD5E1] disabled:opacity-40 focus:outline-none"
+                                    />
+                                  </div>
+                                  <label className="inline-flex items-center gap-1.5 text-[11px] text-[#9BA7B8] cursor-pointer select-none">
+                                    <input
+                                      type="checkbox"
+                                      checked={played}
+                                      onChange={(e) =>
+                                        updateRowDraft(r.id, {
+                                          [cad.playedKey]: e.target.checked,
+                                        })
+                                      }
+                                      className="rounded border-[#323E52] bg-[#131820] text-emerald-500"
+                                    />
+                                    <span>
+                                      {played
+                                        ? 'Écart actif (joué)'
+                                        : 'Aucune partie'}
+                                    </span>
+                                  </label>
+                                </div>
+                              </td>
+                            );
+                          })}
+
+                          <td className="py-2.5 px-3 border-l border-[#232C3A] align-top">
+                            <input
+                              type="text"
+                              value={draft.notes}
+                              onChange={(e) =>
+                                updateRowDraft(r.id, { notes: e.target.value })
+                              }
+                              placeholder="Note..."
+                              className="w-full min-w-[150px] px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg text-[#F1F4F8] placeholder:text-[#6C788B] focus:outline-none focus:border-emerald-500"
+                            />
+                          </td>
+
+                          <td className="py-2.5 px-4 border-l border-[#232C3A] text-right whitespace-nowrap align-top">
+                            {isBulkEditMode ? (
+                              <IconButton
+                                label="Supprimer ce mois (A2F)"
+                                variant="danger"
+                                size="xs"
+                                onClick={() => setRecordToDelete(r)}
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </IconButton>
+                            ) : (
+                              <div className="inline-flex items-center gap-1">
+                                <IconButton
+                                  label="Enregistrer ce mois (A2F)"
+                                  variant="primary"
+                                  size="xs"
+                                  onClick={() => requestSaveSingleRowWith2fa(r)}
+                                >
+                                  <Check className="w-3.5 h-3.5" />
+                                </IconButton>
+                                <IconButton
+                                  label="Annuler la modification"
+                                  variant="ghost"
+                                  size="xs"
+                                  onClick={cancelRowEdit}
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </IconButton>
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    }
+
+                    const stdPlayed = isCadencePlayed(r, 'Standard');
+                    const rapPlayed = isCadencePlayed(r, 'Rapid');
+                    const blzPlayed = isCadencePlayed(r, 'Blitz');
+                    const stdDelta = getCadenceDelta(r, 'Standard');
+                    const rapDelta = getCadenceDelta(r, 'Rapid');
+                    const blzDelta = getCadenceDelta(r, 'Blitz');
+
+                    return (
+                      <tr key={r.id} className="hover:bg-[#19202B]">
+                        <td className="py-3 px-4 font-semibold text-[#F1F4F8] whitespace-nowrap">
+                          {formatPeriodLabel(r.period)}
+                        </td>
+
+                        <td className="py-3 px-3 border-l border-[#232C3A]/70 font-mono tabular-nums whitespace-nowrap">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-emerald-400">
+                              {r.standardElo}
+                            </span>
+                            {stdPlayed ? (
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  stdDelta > 0
+                                    ? 'text-emerald-300'
+                                    : stdDelta < 0
+                                    ? 'text-rose-400'
+                                    : 'text-[#9BA7B8]'
+                                }`}
+                              >
+                                {stdDelta >= 0 ? `+${stdDelta}` : stdDelta}
+                                {r.standardGamesCount > 0
+                                  ? ` (${r.standardGamesCount}p)`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-[#6C788B]">
+                                Aucune
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 border-l border-[#232C3A]/70 font-mono tabular-nums whitespace-nowrap">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-[#D4A853]">
+                              {r.rapidElo}
+                            </span>
+                            {rapPlayed ? (
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  rapDelta > 0
+                                    ? 'text-emerald-300'
+                                    : rapDelta < 0
+                                    ? 'text-rose-400'
+                                    : 'text-[#9BA7B8]'
+                                }`}
+                              >
+                                {rapDelta >= 0 ? `+${rapDelta}` : rapDelta}
+                                {(r.rapidGamesCount ?? 0) > 0
+                                  ? ` (${r.rapidGamesCount}p)`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-[#6C788B]">
+                                Aucune
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 border-l border-[#232C3A]/70 font-mono tabular-nums whitespace-nowrap">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-bold text-sky-400">
+                              {r.blitzElo}
+                            </span>
+                            {blzPlayed ? (
+                              <span
+                                className={`text-[11px] font-bold ${
+                                  blzDelta > 0
+                                    ? 'text-emerald-300'
+                                    : blzDelta < 0
+                                    ? 'text-rose-400'
+                                    : 'text-[#9BA7B8]'
+                                }`}
+                              >
+                                {blzDelta >= 0 ? `+${blzDelta}` : blzDelta}
+                                {(r.blitzGamesCount ?? 0) > 0
+                                  ? ` (${r.blitzGamesCount}p)`
+                                  : ''}
+                              </span>
+                            ) : (
+                              <span className="text-[11px] text-[#6C788B]">
+                                Aucune
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-3 px-3 border-l border-[#232C3A]/70 text-[#9BA7B8] max-w-[220px] truncate">
+                          {r.notes || '—'}
+                        </td>
+
+                        <td className="py-3 px-4 border-l border-[#232C3A]/70 text-right whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1">
+                            <IconButton
+                              label="Modifier ce mois sur place"
+                              variant="ghost"
+                              size="xs"
+                              onClick={() => startRowEdit(r)}
+                            >
+                              <Edit3 className="w-3.5 h-3.5 text-emerald-400" />
+                            </IconButton>
+                            <IconButton
+                              label="Supprimer ce relevé (A2F)"
+                              variant="danger"
+                              size="xs"
+                              onClick={() => setRecordToDelete(r)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </IconButton>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* MODALE DE CONFIRMATION DE SUPPRESSION D'UN RELEVÉ MENSUEL (3 secondes) */}
-      <ConfirmDeleteModal
+      {/* MODALE : AJOUTER UN NOUVEAU MOIS */}
+      {isAddMonthOpen && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/75 backdrop-blur-xs p-0 sm:p-4 overflow-y-auto">
+          <div className="bg-[#131820] border border-[#232C3A] rounded-t-3xl sm:rounded-2xl max-w-2xl w-full p-4 sm:p-6 space-y-5 max-h-[92dvh] overflow-y-auto pb-safe">
+            <div className="w-10 h-1 rounded-full bg-[#323E52] mx-auto sm:hidden" />
+
+            <div className="flex items-center justify-between border-b border-[#232C3A] pb-3">
+              <div>
+                <h3 className="text-base sm:text-lg font-bold text-[#F1F4F8] font-display">
+                  Nouvelles données du mois (Protégé A2F)
+                </h3>
+                <p className="text-xs text-[#9BA7B8]">
+                  Définissez librement vos Elos et vos propres écarts pour
+                  chaque cadence.
+                </p>
+              </div>
+              <IconButton
+                label="Fermer"
+                variant="ghost"
+                size="sm"
+                onClick={() => setIsAddMonthOpen(false)}
+              >
+                <X className="w-4 h-4" />
+              </IconButton>
+            </div>
+
+            <form
+              onSubmit={handleSubmitNewMonthModal}
+              className="space-y-4 text-xs"
+            >
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-semibold text-[#CBD5E1] mb-1.5">
+                    Mois (YYYY-MM)
+                  </label>
+                  <input
+                    type="month"
+                    required
+                    value={newMonthDraft.period}
+                    onChange={(e) =>
+                      setNewMonthDraft((prev) => ({
+                        ...prev,
+                        period: e.target.value,
+                      }))
+                    }
+                    className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+                <div>
+                  <label className="block font-semibold text-[#CBD5E1] mb-1.5">
+                    Note du mois
+                  </label>
+                  <input
+                    type="text"
+                    value={newMonthDraft.notes}
+                    onChange={(e) =>
+                      setNewMonthDraft((prev) => ({
+                        ...prev,
+                        notes: e.target.value,
+                      }))
+                    }
+                    placeholder="Ex: Liste FIDE Novembre"
+                    className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8] placeholder:text-[#6C788B] focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {(
+                  [
+                    {
+                      label: 'Classique',
+                      color: 'text-emerald-400',
+                      border: 'border-emerald-500/30',
+                      eloKey: 'standardElo' as const,
+                      playedKey: 'standardPlayed' as const,
+                      deltaKey: 'standardDelta' as const,
+                      gamesKey: 'standardGamesCount' as const,
+                    },
+                    {
+                      label: 'Rapide',
+                      color: 'text-[#D4A853]',
+                      border: 'border-[#D4A853]/30',
+                      eloKey: 'rapidElo' as const,
+                      playedKey: 'rapidPlayed' as const,
+                      deltaKey: 'rapidDelta' as const,
+                      gamesKey: 'rapidGamesCount' as const,
+                    },
+                    {
+                      label: 'Blitz',
+                      color: 'text-sky-400',
+                      border: 'border-sky-400/30',
+                      eloKey: 'blitzElo' as const,
+                      playedKey: 'blitzPlayed' as const,
+                      deltaKey: 'blitzDelta' as const,
+                      gamesKey: 'blitzGamesCount' as const,
+                    },
+                  ]
+                ).map((cad) => {
+                  const played = newMonthDraft[cad.playedKey];
+                  return (
+                    <div
+                      key={cad.label}
+                      className={`p-3.5 bg-[#19202B] border ${cad.border} rounded-xl space-y-2.5`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`font-bold ${cad.color}`}>
+                          {cad.label}
+                        </span>
+                        <label className="inline-flex items-center gap-1.5 text-[11px] text-[#CBD5E1] cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={played}
+                            onChange={(e) =>
+                              setNewMonthDraft((prev) => ({
+                                ...prev,
+                                [cad.playedKey]: e.target.checked,
+                              }))
+                            }
+                            className="rounded border-[#323E52] bg-[#131820] text-emerald-500"
+                          />
+                          <span>Joué</span>
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-[11px] text-[#9BA7B8] mb-1">
+                          Elo du mois
+                        </label>
+                        <input
+                          type="number"
+                          required
+                          value={newMonthDraft[cad.eloKey]}
+                          onChange={(e) =>
+                            setNewMonthDraft((prev) => ({
+                              ...prev,
+                              [cad.eloKey]: e.target.value,
+                            }))
+                          }
+                          className="w-full px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-[#9BA7B8] mb-1">
+                            Mon écart (+/-)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.1"
+                            disabled={!played}
+                            value={played ? newMonthDraft[cad.deltaKey] : '0'}
+                            onChange={(e) =>
+                              setNewMonthDraft((prev) => ({
+                                ...prev,
+                                [cad.deltaKey]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8] disabled:opacity-40"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-[#9BA7B8] mb-1">
+                            Parties
+                          </label>
+                          <input
+                            type="number"
+                            min={0}
+                            disabled={!played}
+                            value={played ? newMonthDraft[cad.gamesKey] : '0'}
+                            onChange={(e) =>
+                              setNewMonthDraft((prev) => ({
+                                ...prev,
+                                [cad.gamesKey]: e.target.value,
+                              }))
+                            }
+                            className="w-full px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-[#CBD5E1] disabled:opacity-40"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-[#232C3A]">
+                <button
+                  type="button"
+                  onClick={() => setIsAddMonthOpen(false)}
+                  className="px-4 py-2 rounded-xl bg-[#19202B] border border-[#2B3647] text-xs font-semibold text-[#CBD5E1] cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold cursor-pointer"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>Valider avec A2F</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE A2F POUR ENREGISTRER / MODIFIER DES DONNÉES DU MOIS */}
+      <TwoFactorChallengeModal
+        isOpen={Boolean(pendingMonthlySave)}
+        variant="primary"
+        badgeLabel="Données du mois · Microsoft Authenticator A2F"
+        title={pendingMonthlySave?.title || ''}
+        subtitle={pendingMonthlySave?.subtitle || ''}
+        itemLabel={pendingMonthlySave?.itemLabel}
+        details={pendingMonthlySave?.details || []}
+        confirmLabel="Enregistrer (A2F)"
+        twoFactorAuth={twoFactorAuth}
+        accountName={profile.displayName}
+        onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
+        onCancel={() => setPendingMonthlySave(null)}
+        onVerifiedConfirm={async () => {
+          if (!pendingMonthlySave) return;
+          if (pendingMonthlySave.updates.length === 1) {
+            const single = pendingMonthlySave.updates[0];
+            await onSaveRatingRecord(single.input, single.existingId);
+          } else {
+            await onSaveRatingRecordsBulk(pendingMonthlySave.updates);
+          }
+          if (pendingMonthlySave.mode === 'add') {
+            setIsAddMonthOpen(false);
+          } else if (pendingMonthlySave.mode === 'single') {
+            setEditingRowId(null);
+            setDraftsById({});
+          } else if (pendingMonthlySave.mode === 'bulk') {
+            setIsBulkEditMode(false);
+            setDraftsById({});
+          }
+          setPendingMonthlySave(null);
+        }}
+      />
+
+      {/* MODALE A2F POUR SUPPRIMER UN RELEVÉ MENSUEL */}
+      <TwoFactorChallengeModal
         isOpen={Boolean(recordToDelete)}
+        variant="danger"
+        badgeLabel="Suppression protégée · Relevé mensuel FIDE"
         title="Supprimer ce relevé mensuel FIDE ?"
-        subtitle="Vous êtes sur le point de supprimer ce mois de votre historique de classement."
-        itemName={recordToDelete ? formatPeriodLabel(recordToDelete.period) : ''}
+        subtitle="Vous êtes sur le point de supprimer définitivement ce mois de votre historique. Code Microsoft Authenticator obligatoire."
+        itemLabel={recordToDelete ? formatPeriodLabel(recordToDelete.period) : ''}
         details={
           recordToDelete
             ? [
@@ -1725,20 +2718,26 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   value: formatPeriodLabel(recordToDelete.period),
                 },
                 {
-                  label: 'Elos (Classique / Rapide / Blitz)',
+                  label: 'Elos (Std / Rap / Blz)',
                   value: `${recordToDelete.standardElo} / ${recordToDelete.rapidElo} / ${recordToDelete.blitzElo}`,
                 },
                 {
-                  label: 'Variation & Parties',
-                  value: `${
-                    recordToDelete.standardDelta >= 0 ? '+' : ''
-                  }${recordToDelete.standardDelta} pts (${recordToDelete.standardGamesCount} parties)`,
+                  label: 'Écarts',
+                  value: `Std ${recordToDelete.standardDelta} · Rap ${
+                    recordToDelete.rapidDelta ?? 0
+                  } · Blz ${recordToDelete.blitzDelta ?? 0}`,
                 },
               ]
             : []
         }
+        requireCheckbox
+        checkboxLabel="Je confirme vouloir supprimer définitivement les données de ce mois."
+        confirmLabel="Supprimer ce mois (A2F)"
+        twoFactorAuth={twoFactorAuth}
+        accountName={profile.displayName}
+        onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
         onCancel={() => setRecordToDelete(null)}
-        onConfirm={async () => {
+        onVerifiedConfirm={async () => {
           if (!recordToDelete) return;
           await onDeleteRatingRecord(recordToDelete.id);
           setRecordToDelete(null);

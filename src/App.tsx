@@ -400,28 +400,35 @@ export default function App() {
     }
   };
 
-  const handleLogin = async (newSession: SessionConfig) => {
-    const remoteData = await fetchDatabaseFromJsonBin(
-      newSession.binId,
-      newSession.masterKey
-    );
+  const handleLogin = async (
+    newSession: SessionConfig,
+    preloadedDb?: FideLedgerDatabase
+  ) => {
+    const remoteData =
+      preloadedDb ||
+      (await fetchDatabaseFromJsonBin(newSession.binId, newSession.masterKey));
     if (
       newSession.playerName &&
       remoteData.profile.displayName === 'Mon Profil Échecs'
     ) {
       remoteData.profile.displayName = newSession.playerName;
     }
-    saveSession(newSession);
-    setSession(newSession);
+    const verifiedSession: SessionConfig = {
+      ...newSession,
+      isAuthenticated: true,
+      twoFactorVerified: true,
+    };
+    saveSession(verifiedSession);
+    setSession(verifiedSession);
     setDbState(remoteData);
     hasFetchedFideOnceRef.current = true;
     setFideStatus((prev) => ({
       ...prev,
-      binId: newSession.binId,
+      binId: verifiedSession.binId,
       state: 'synced',
       lastSyncedAt: new Date().toISOString(),
       lastError: null,
-      getRequestsCount: prev.getRequestsCount + 1,
+      getRequestsCount: prev.getRequestsCount + (preloadedDb ? 0 : 1),
     }));
   };
 
@@ -429,7 +436,11 @@ export default function App() {
     clearSession();
     hasFetchedFideOnceRef.current = false;
     hasFetchedFriendlyOnceRef.current = false;
-    setSession((prev) => ({ ...prev, isAuthenticated: false }));
+    setSession((prev) => ({
+      ...prev,
+      isAuthenticated: false,
+      twoFactorVerified: false,
+    }));
   };
 
   // =========================================================
@@ -699,6 +710,47 @@ export default function App() {
             : r
         )
       : [...ratingHistory, { ...clean, id: targetId }];
+
+    const sorted = [...nextRatings].sort((a, b) =>
+      a.period.localeCompare(b.period)
+    );
+    const latest = sorted[sorted.length - 1];
+    const nextProfile = latest
+      ? {
+          ...profile,
+          standardElo: latest.standardElo,
+          rapidElo: latest.rapidElo,
+          blitzElo: latest.blitzElo,
+        }
+      : profile;
+
+    await persistUpdate({
+      ...dbState,
+      profile: nextProfile,
+      ratingHistory: nextRatings,
+    });
+  };
+
+  const handleSaveRatingRecordsBulk = async (
+    updates: Array<{
+      input: Omit<MonthlyRatingRecord, 'id' | 'ownerId'>;
+      existingId?: string;
+    }>
+  ) => {
+    if (updates.length === 0) return;
+    const nextRatings = [...ratingHistory];
+    for (const { input, existingId } of updates) {
+      const clean = sanitizeMonthlyRatingPayload('default_player', input);
+      const targetId = existingId || `fide_${clean.period.replace('-', '_')}`;
+      const existsIdx = nextRatings.findIndex(
+        (r) => r.id === targetId || r.period === clean.period
+      );
+      if (existsIdx >= 0) {
+        nextRatings[existsIdx] = { ...clean, id: nextRatings[existsIdx].id };
+      } else {
+        nextRatings.push({ ...clean, id: targetId });
+      }
+    }
 
     const sorted = [...nextRatings].sort((a, b) =>
       a.period.localeCompare(b.period)
@@ -1178,8 +1230,8 @@ export default function App() {
     };
   }, [ratingHistory, profile, games, tournaments]);
 
-  // PAGE DE CONNEXION
-  if (!session.isAuthenticated) {
+  // PAGE DE CONNEXION (avec A2F Microsoft Authenticator obligatoire)
+  if (!session.isAuthenticated || !session.twoFactorVerified) {
     return (
       <LoginSection
         defaultName={profile?.displayName || session.playerName}
@@ -1245,9 +1297,9 @@ export default function App() {
   const isAnySyncing = isLoading || isSyncing || isSyncingFriendly;
 
   return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-[#0B0E12] text-[#F1F4F8]">
-      {/* BARRE D'ICÔNES LATÉRALE GAUCHE (Desktop — Icon Rail 76px) */}
-      <aside className="hidden md:flex md:w-[76px] shrink-0 bg-[#0F131A] border-r border-[#1F2733] flex-col items-center justify-between py-4 sticky top-0 h-screen z-30 select-none">
+    <div className="min-h-screen flex flex-col bg-[#0B0E12] text-[#F1F4F8]">
+      {/* BARRE D'ICÔNES LATÉRALE GAUCHE FIXE (Desktop — Icon Rail 76px) */}
+      <aside className="hidden md:flex md:fixed md:inset-y-0 md:left-0 md:w-[76px] bg-[#0F131A] border-r border-[#1F2733] flex-col items-center justify-between py-4 z-30 select-none">
         <div className="flex flex-col items-center gap-3 w-full">
           {/* Marque */}
           <IconButton
@@ -1455,7 +1507,7 @@ export default function App() {
       </header>
 
       {/* Zone Principale de Contenu à Droite */}
-      <div className="flex-1 min-w-0 flex flex-col justify-between">
+      <div className="flex-1 min-w-0 md:pl-[76px] flex flex-col justify-between min-h-screen">
         <div>
           {/* Barre Contextuelle Sticky (Desktop) */}
           <header className="hidden md:flex h-14 border-b border-[#1F2733] bg-[#0B0E12]/90 backdrop-blur-md sticky top-0 z-20 px-7 lg:px-10 items-center justify-between gap-4">
@@ -2048,6 +2100,9 @@ export default function App() {
                 setInspectedGame(game);
                 setActiveTab('games');
               }}
+              twoFactorAuth={profile?.twoFactorAuth}
+              accountName={profile?.displayName}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
 
@@ -2069,6 +2124,9 @@ export default function App() {
                 setActiveTab('players');
               }}
               onGoToTournaments={() => setActiveTab('tournaments')}
+              twoFactorAuth={profile?.twoFactorAuth}
+              accountName={profile?.displayName}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
 
@@ -2100,8 +2158,11 @@ export default function App() {
               tournaments={tournaments}
               profile={profile}
               onSaveRatingRecord={handleSaveRatingRecord}
+              onSaveRatingRecordsBulk={handleSaveRatingRecordsBulk}
               onDeleteRatingRecord={handleDeleteRatingRecord}
               onOpenProfileModal={() => setIsProfileModalOpen(true)}
+              twoFactorAuth={profile?.twoFactorAuth}
+              onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
             />
           )}
 

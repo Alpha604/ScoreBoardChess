@@ -50,6 +50,7 @@ export interface FriendlyLedgerDatabase {
 
 export interface SessionConfig {
   isAuthenticated: boolean;
+  twoFactorVerified?: boolean;
   playerName: string;
   binId: string;
   masterKey: string;
@@ -108,6 +109,7 @@ export function getSavedSession(): SessionConfig {
     if (!raw) {
       return {
         isAuthenticated: false,
+        twoFactorVerified: false,
         playerName: '',
         binId: DEFAULT_JSONBIN_BIN_ID,
         masterKey: DEFAULT_JSONBIN_MASTER_KEY,
@@ -118,6 +120,7 @@ export function getSavedSession(): SessionConfig {
     const parsed = JSON.parse(raw);
     return {
       isAuthenticated: Boolean(parsed.isAuthenticated),
+      twoFactorVerified: Boolean(parsed.twoFactorVerified),
       playerName: parsed.playerName || 'Mon Profil Échecs',
       binId: parsed.binId || DEFAULT_JSONBIN_BIN_ID,
       masterKey: parsed.masterKey || DEFAULT_JSONBIN_MASTER_KEY,
@@ -130,6 +133,7 @@ export function getSavedSession(): SessionConfig {
   } catch {
     return {
       isAuthenticated: false,
+      twoFactorVerified: false,
       playerName: '',
       binId: DEFAULT_JSONBIN_BIN_ID,
       masterKey: DEFAULT_JSONBIN_MASTER_KEY,
@@ -155,6 +159,7 @@ export function clearSession(): void {
       JSON.stringify({
         ...current,
         isAuthenticated: false,
+        twoFactorVerified: false,
       })
     );
   } catch {
@@ -542,18 +547,49 @@ function normalizeDatabasePayload(raw: unknown): FideLedgerDatabase {
   const opponents = syncOpponentsWithGames(rawOpponents, games);
 
   const ratingHistory: MonthlyRatingRecord[] = Array.isArray(payload.ratingHistory)
-    ? payload.ratingHistory.map((r: Partial<MonthlyRatingRecord>, idx: number) => ({
-        id: r.id || `rating_${idx + 1}`,
-        ownerId: 'default_player',
-        period: r.period || new Date().toISOString().slice(0, 7),
-        standardElo: Number(r.standardElo) || profile.standardElo,
-        rapidElo: Number(r.rapidElo) || profile.rapidElo,
-        blitzElo: Number(r.blitzElo) || profile.blitzElo,
-        standardGamesCount: Number(r.standardGamesCount) || 0,
-        standardDelta: Number(r.standardDelta) || 0,
-        fideRankNational: Number(r.fideRankNational) || 0,
-        notes: r.notes || '',
-      }))
+    ? payload.ratingHistory.map((r: Partial<MonthlyRatingRecord>, idx: number) => {
+        const stdGames = Number(r.standardGamesCount) || 0;
+        const stdDelta = Number(r.standardDelta) || 0;
+        const rapidGames = Number(r.rapidGamesCount) || 0;
+        const rapidDelta =
+          r.rapidDelta !== undefined && r.rapidDelta !== null
+            ? Number(r.rapidDelta) || 0
+            : 0;
+        const blitzGames = Number(r.blitzGamesCount) || 0;
+        const blitzDelta =
+          r.blitzDelta !== undefined && r.blitzDelta !== null
+            ? Number(r.blitzDelta) || 0
+            : 0;
+
+        return {
+          id: r.id || `rating_${idx + 1}`,
+          ownerId: 'default_player',
+          period: r.period || new Date().toISOString().slice(0, 7),
+          standardElo: Number(r.standardElo) || profile.standardElo,
+          rapidElo: Number(r.rapidElo) || profile.rapidElo,
+          blitzElo: Number(r.blitzElo) || profile.blitzElo,
+          standardGamesCount: stdGames,
+          standardDelta: stdDelta,
+          standardPlayed:
+            typeof r.standardPlayed === 'boolean'
+              ? r.standardPlayed
+              : stdGames > 0 || stdDelta !== 0,
+          rapidGamesCount: rapidGames,
+          rapidDelta,
+          rapidPlayed:
+            typeof r.rapidPlayed === 'boolean'
+              ? r.rapidPlayed
+              : rapidGames > 0 || rapidDelta !== 0,
+          blitzGamesCount: blitzGames,
+          blitzDelta,
+          blitzPlayed:
+            typeof r.blitzPlayed === 'boolean'
+              ? r.blitzPlayed
+              : blitzGames > 0 || blitzDelta !== 0,
+          fideRankNational: Number(r.fideRankNational) || 0,
+          notes: r.notes || '',
+        };
+      })
     : [];
 
   return {

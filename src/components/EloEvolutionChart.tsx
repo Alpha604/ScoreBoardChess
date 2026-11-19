@@ -111,27 +111,73 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
           {showCadences.standard && (
             <span className="text-emerald-400 font-bold">
               Classique : {activeRecord.standardElo}{' '}
-              <span
-                className={
-                  activeRecord.standardDelta > 0
-                    ? 'text-emerald-300'
-                    : activeRecord.standardDelta < 0
-                    ? 'text-rose-400'
-                    : 'text-[#6C788B]'
-                }
-              >
-                ({activeRecord.standardDelta > 0 ? `+${activeRecord.standardDelta}` : activeRecord.standardDelta})
-              </span>
+              {(activeRecord.standardPlayed ??
+                (activeRecord.standardGamesCount > 0 ||
+                  activeRecord.standardDelta !== 0)) && (
+                <span
+                  className={
+                    activeRecord.standardDelta > 0
+                      ? 'text-emerald-300'
+                      : activeRecord.standardDelta < 0
+                      ? 'text-rose-400'
+                      : 'text-[#6C788B]'
+                  }
+                >
+                  (
+                  {activeRecord.standardDelta > 0
+                    ? `+${activeRecord.standardDelta}`
+                    : activeRecord.standardDelta}
+                  )
+                </span>
+              )}
             </span>
           )}
           {showCadences.rapid && (
             <span className="text-[#D4A853] font-bold">
               Rapide : {activeRecord.rapidElo}
+              {(activeRecord.rapidPlayed ||
+                (activeRecord.rapidDelta !== undefined &&
+                  activeRecord.rapidDelta !== 0)) && (
+                <span
+                  className={`ml-1 ${
+                    (activeRecord.rapidDelta ?? 0) > 0
+                      ? 'text-emerald-300'
+                      : (activeRecord.rapidDelta ?? 0) < 0
+                      ? 'text-rose-400'
+                      : 'text-[#6C788B]'
+                  }`}
+                >
+                  (
+                  {(activeRecord.rapidDelta ?? 0) > 0
+                    ? `+${activeRecord.rapidDelta}`
+                    : activeRecord.rapidDelta ?? 0}
+                  )
+                </span>
+              )}
             </span>
           )}
           {showCadences.blitz && (
             <span className="text-sky-400 font-bold">
               Blitz : {activeRecord.blitzElo}
+              {(activeRecord.blitzPlayed ||
+                (activeRecord.blitzDelta !== undefined &&
+                  activeRecord.blitzDelta !== 0)) && (
+                <span
+                  className={`ml-1 ${
+                    (activeRecord.blitzDelta ?? 0) > 0
+                      ? 'text-emerald-300'
+                      : (activeRecord.blitzDelta ?? 0) < 0
+                      ? 'text-rose-400'
+                      : 'text-[#6C788B]'
+                  }`}
+                >
+                  (
+                  {(activeRecord.blitzDelta ?? 0) > 0
+                    ? `+${activeRecord.blitzDelta}`
+                    : activeRecord.blitzDelta ?? 0}
+                  )
+                </span>
+              )}
             </span>
           )}
         </div>

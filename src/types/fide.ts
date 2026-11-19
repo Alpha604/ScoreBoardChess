@@ -128,6 +128,13 @@ export interface MonthlyRatingRecord {
   blitzElo: number;
   standardGamesCount: number;
   standardDelta: number;
+  standardPlayed?: boolean;
+  rapidDelta?: number;
+  rapidGamesCount?: number;
+  rapidPlayed?: boolean;
+  blitzDelta?: number;
+  blitzGamesCount?: number;
+  blitzPlayed?: boolean;
   fideRankNational: number;
   notes: string;
 }

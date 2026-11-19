@@ -24,7 +24,7 @@
     font-size: 16px;
     line-height: 1.55;
     color-scheme: dark;
-    overflow-x: hidden;
+    overflow-x: clip;
   }
 
   body {
@@ -34,7 +34,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     text-rendering: optimizeLegibility;
-    overflow-x: hidden;
+    overflow-x: clip;
     -webkit-tap-highlight-color: transparent;
   }
 

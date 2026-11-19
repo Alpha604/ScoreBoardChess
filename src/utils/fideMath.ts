@@ -126,3 +126,31 @@ export function formatPeriodLabel(period: string): string {
   }
   return period;
 }
+
+/**
+ * Calcule le mois suivant au format YYYY-MM (ex: '2026-09' -> '2026-10', '2026-12' -> '2027-01').
+ */
+export function getNextMonthPeriod(period: string): string {
+  const match = /^(\d{4})-(\d{2})$/.exec(period.trim());
+  if (!match) return period;
+  let year = parseInt(match[1], 10);
+  let month = parseInt(match[2], 10) + 1;
+  if (month > 12) {
+    month = 1;
+    year += 1;
+  }
+  return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+/**
+ * Règle FIDE officielle : un tournoi ou une partie joué(e) au mois M
+ * compte pour la mise à jour / liste FIDE du mois suivant (M + 1).
+ * Exemple : un tournoi joué en septembre (2026-09) compte pour octobre (2026-10).
+ */
+export function getFidePublicationPeriodFromDate(dateStr?: string): string {
+  if (!dateStr || dateStr.length < 7) return '';
+  const ym = dateStr.slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(ym)) return '';
+  return getNextMonthPeriod(ym);
+}
+
