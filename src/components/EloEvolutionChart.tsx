@@ -25,7 +25,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
 
   if (sorted.length === 0) {
     return (
-      <div className="h-64 flex items-center justify-center border border-dashed border-indigo-200 rounded-xl bg-indigo-50/30 text-sm font-medium text-indigo-900">
+      <div className="h-64 flex items-center justify-center border border-dashed border-[#2B3647] rounded-xl bg-[#19202B]/50 text-sm font-medium text-[#9BA7B8]">
         Aucun relevé mensuel FIDE enregistré pour le moment.
       </div>
     );
@@ -87,20 +87,20 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Bandeau récapitulatif coloré du mois sélectionné */}
-      <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-        <div className="flex flex-wrap items-center gap-2 text-slate-700">
-          <span className="font-bold text-indigo-950 text-sm">
+      {/* Bandeau récapitulatif sobre du mois sélectionné */}
+      <div className="flex flex-wrap items-center justify-between gap-4 p-3.5 rounded-xl bg-[#19202B] border border-[#232C3A] text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-[#9BA7B8]">
+          <span className="font-bold text-[#F1F4F8] text-sm font-display">
             {formatPeriodLabel(activeRecord.period)}
           </span>
           <span aria-hidden="true">·</span>
-          <span className="font-mono tabular-nums font-medium text-slate-600">
+          <span className="font-mono tabular-nums font-medium">
             {activeRecord.standardGamesCount} partie{activeRecord.standardGamesCount > 1 ? 's' : ''} FIDE
           </span>
           {activeRecord.notes && (
             <>
               <span aria-hidden="true">·</span>
-              <span className="text-slate-600 font-medium truncate max-w-md">
+              <span className="text-[#CBD5E1] font-medium truncate max-w-md">
                 {activeRecord.notes}
               </span>
             </>
@@ -109,15 +109,15 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
 
         <div className="flex flex-wrap items-center gap-5 font-mono tabular-nums text-xs">
           {showCadences.standard && (
-            <span className="text-indigo-700 font-bold">
+            <span className="text-emerald-400 font-bold">
               Classique : {activeRecord.standardElo}{' '}
               <span
                 className={
                   activeRecord.standardDelta > 0
-                    ? 'text-emerald-700'
+                    ? 'text-emerald-300'
                     : activeRecord.standardDelta < 0
-                    ? 'text-rose-700'
-                    : 'text-slate-500'
+                    ? 'text-rose-400'
+                    : 'text-[#6C788B]'
                 }
               >
                 ({activeRecord.standardDelta > 0 ? `+${activeRecord.standardDelta}` : activeRecord.standardDelta})
@@ -125,12 +125,12 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
             </span>
           )}
           {showCadences.rapid && (
-            <span className="text-amber-700 font-bold">
+            <span className="text-[#D4A853] font-bold">
               Rapide : {activeRecord.rapidElo}
             </span>
           )}
           {showCadences.blitz && (
-            <span className="text-sky-700 font-bold">
+            <span className="text-sky-400 font-bold">
               Blitz : {activeRecord.blitzElo}
             </span>
           )}
@@ -146,8 +146,8 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
         >
           <defs>
             <linearGradient id="standardAreaGrad" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#4f46e5" stopOpacity="0.22" />
-              <stop offset="100%" stopColor="#4f46e5" stopOpacity="0.01" />
+              <stop offset="0%" stopColor="#10B981" stopOpacity="0.24" />
+              <stop offset="100%" stopColor="#10B981" stopOpacity="0.01" />
             </linearGradient>
           </defs>
 
@@ -161,7 +161,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                   y1={y}
                   x2={width - padRight}
                   y2={y}
-                  stroke="#e2e8f0"
+                  stroke="#232C3A"
                   strokeDasharray="4 4"
                   strokeWidth="1"
                 />
@@ -169,7 +169,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                   x={padLeft - 10}
                   y={y + 4}
                   textAnchor="end"
-                  className="fill-slate-500 font-mono text-[11px] font-semibold"
+                  className="fill-[#6C788B] font-mono text-[11px] font-semibold"
                 >
                   {lvl}
                 </text>
@@ -185,50 +185,51 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                 y1={getY(targetElo)}
                 x2={width - padRight}
                 y2={getY(targetElo)}
-                stroke="#059669"
+                stroke="#D4A853"
                 strokeDasharray="6 4"
-                strokeWidth="1.75"
+                strokeWidth="1.5"
+                opacity="0.7"
               />
               <text
                 x={width - padRight - 4}
                 y={getY(targetElo) - 7}
                 textAnchor="end"
-                className="fill-emerald-700 font-mono text-[11px] font-bold"
+                className="fill-[#D4A853] font-mono text-[11px] font-bold"
               >
-                Objectif {targetElo} Elo
+                Objectif {targetElo}
               </text>
             </g>
           )}
 
-          {/* Courbe Blitz (Bleu Azur) */}
+          {/* Courbe Blitz */}
           {showCadences.blitz && (
             <path
               d={buildPath((r) => r.blitzElo)}
               fill="none"
-              stroke="#0284c7"
+              stroke="#38BDF8"
               strokeWidth="2.25"
               strokeDasharray="5 3"
             />
           )}
 
-          {/* Courbe Rapide (Ambre) */}
+          {/* Courbe Rapide */}
           {showCadences.rapid && (
             <path
               d={buildPath((r) => r.rapidElo)}
               fill="none"
-              stroke="#d97706"
+              stroke="#D4A853"
               strokeWidth="2.5"
             />
           )}
 
-          {/* Courbe Classique (Indigo Royal) */}
+          {/* Courbe Classique */}
           {showCadences.standard && (
             <>
               <path d={buildAreaPath((r) => r.standardElo)} fill="url(#standardAreaGrad)" />
               <path
                 d={buildPath((r) => r.standardElo)}
                 fill="none"
-                stroke="#4f46e5"
+                stroke="#10B981"
                 strokeWidth="3.25"
               />
             </>
@@ -241,7 +242,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
               y1={padTop}
               x2={getX(hoveredIndex)}
               y2={padTop + plotH}
-              stroke="#6366f1"
+              stroke="#475569"
               strokeWidth="1.5"
               strokeDasharray="3 3"
             />
@@ -262,7 +263,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                     y={height - 12}
                     textAnchor="middle"
                     className={`font-mono text-[11px] ${
-                      isHovered ? 'fill-indigo-700 font-bold' : 'fill-slate-600 font-medium'
+                      isHovered ? 'fill-emerald-400 font-bold' : 'fill-[#6C788B] font-medium'
                     }`}
                   >
                     {r.period}
@@ -274,7 +275,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                     cx={x}
                     cy={getY(r.blitzElo)}
                     r={isHovered ? 5.5 : 3.5}
-                    className="fill-sky-600 stroke-white stroke-2"
+                    className="fill-sky-400 stroke-[#131820] stroke-2"
                   />
                 )}
 
@@ -283,7 +284,7 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                     cx={x}
                     cy={getY(r.rapidElo)}
                     r={isHovered ? 5.5 : 3.5}
-                    className="fill-amber-500 stroke-white stroke-2"
+                    className="fill-[#D4A853] stroke-[#131820] stroke-2"
                   />
                 )}
 
@@ -292,11 +293,10 @@ export const EloEvolutionChart: React.FC<EloEvolutionChartProps> = ({
                     cx={x}
                     cy={getY(r.standardElo)}
                     r={isHovered ? 6.5 : 4.5}
-                    className="fill-indigo-600 stroke-white stroke-2"
+                    className="fill-emerald-400 stroke-[#131820] stroke-2"
                   />
                 )}
 
-                {/* Colonne interactive au survol */}
                 <rect
                   x={x - plotW / Math.max(2, sorted.length * 2)}
                   y={padTop}

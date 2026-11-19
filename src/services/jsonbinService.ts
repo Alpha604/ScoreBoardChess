@@ -328,8 +328,24 @@ function normalizeTournamentsArray(rawTournaments: unknown, defaultElo = 1500): 
     finalRank: t.finalRank ? Number(t.finalRank) : undefined,
     startingElo: Number(t.startingElo) || defaultElo,
     status: t.status || 'ongoing',
+    isPaused: Boolean(t.isPaused || t.status === 'paused'),
+    pausedNotes: t.pausedNotes || '',
+    pausedFields: Array.isArray(t.pausedFields) ? t.pausedFields : [],
     normTarget: t.normTarget || '',
     notes: t.notes || '',
+    manualPerformance:
+      t.manualPerformance !== undefined &&
+      t.manualPerformance !== null &&
+      Number(t.manualPerformance) > 0
+        ? Math.round(Number(t.manualPerformance))
+        : undefined,
+    manualEloDelta:
+      t.manualEloDelta !== undefined &&
+      t.manualEloDelta !== null &&
+      String(t.manualEloDelta).trim() !== '' &&
+      !Number.isNaN(Number(t.manualEloDelta))
+        ? Math.round(Number(t.manualEloDelta) * 10) / 10
+        : undefined,
   }));
 }
 

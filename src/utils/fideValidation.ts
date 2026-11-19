@@ -36,7 +36,7 @@ const VALID_FORMATS: TournamentFormat[] = [
   'Team',
   'Knockout',
 ];
-const VALID_STATUSES: TournamentStatus[] = ['upcoming', 'ongoing', 'completed'];
+const VALID_STATUSES: TournamentStatus[] = ['upcoming', 'ongoing', 'completed', 'paused'];
 const VALID_COLORS: PlayerColor[] = ['White', 'Black'];
 const VALID_RESULTS: GameResult[] = ['1-0', '0-1', '1/2-1/2'];
 const VALID_TERMINATIONS: GameTermination[] = [
@@ -370,6 +370,25 @@ export function sanitizeTournamentPayload(
   const fmt = VALID_FORMATS.includes(input.format) ? input.format : 'Swiss';
   const st = VALID_STATUSES.includes(input.status) ? input.status : 'ongoing';
 
+  const rawManualPerf = input.manualPerformance;
+  const manualPerformance =
+    rawManualPerf !== undefined &&
+    rawManualPerf !== null &&
+    String(rawManualPerf).trim() !== '' &&
+    Number.isFinite(Number(rawManualPerf)) &&
+    Number(rawManualPerf) > 0
+      ? Math.round(clampNumber(Number(rawManualPerf), 400, 3800, 1500))
+      : undefined;
+
+  const rawManualDelta = input.manualEloDelta;
+  const manualEloDelta =
+    rawManualDelta !== undefined &&
+    rawManualDelta !== null &&
+    String(rawManualDelta).trim() !== '' &&
+    Number.isFinite(Number(rawManualDelta))
+      ? Math.round(clampNumber(Number(rawManualDelta), -500, 500, 0) * 10) / 10
+      : undefined;
+
   return {
     ownerId,
     name: sanitizeString(input.name, 120, 'Tournoi'),
@@ -394,8 +413,15 @@ export function sanitizeTournamentPayload(
       clampNumber(Number(input.startingElo), 800, 3500, 1500)
     ),
     status: st,
+    isPaused: Boolean(input.isPaused || st === 'paused'),
+    pausedNotes: sanitizeString(input.pausedNotes, 300, ''),
+    pausedFields: Array.isArray(input.pausedFields)
+      ? input.pausedFields.map((f) => sanitizeString(f, 80, '')).filter(Boolean)
+      : [],
     normTarget: sanitizeString(input.normTarget, 80, ''),
     notes: sanitizeString(input.notes, 1000, ''),
+    manualPerformance,
+    manualEloDelta,
   };
 }
 

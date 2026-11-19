@@ -8,6 +8,7 @@ import {
   AlertCircle,
   ArrowUpRight,
   Coffee,
+  Crown,
   Database,
   LayoutDashboard,
   LogOut,
@@ -19,11 +20,13 @@ import {
   Trophy,
   UserCheck,
   Users,
+  X,
 } from 'lucide-react';
 import { EloEvolutionChart } from './components/EloEvolutionChart';
 import { FederationFlag } from './components/FederationFlag';
 import { FriendlySection } from './components/FriendlySection';
 import { GamesSection } from './components/GamesSection';
+import { IconButton } from './components/IconButton';
 import { LoginSection } from './components/LoginSection';
 import { PlayersSection } from './components/PlayersSection';
 import { ProfileModal } from './components/ProfileModal';
@@ -72,6 +75,7 @@ import {
   formatPlayerNameDisplay,
   formatPlayerNameLastFirst,
   hasQuestionMarkName,
+  isOpponentEloUnknownForCadence,
   sanitizeFideGamePayload,
   sanitizeMonthlyRatingPayload,
   sanitizeOpponentPayload,
@@ -1110,8 +1114,30 @@ export default function App() {
     const winPct = totalGames > 0 ? Math.round((wins / totalGames) * 100) : 0;
     const drawPct = totalGames > 0 ? Math.round((draws / totalGames) * 100) : 0;
     const lossPct = totalGames > 0 ? Math.max(0, 100 - winPct - drawPct) : 0;
+    const manualTournamentIds = new Set(
+      tournaments
+        .filter(
+          (t) =>
+            t.manualEloDelta !== undefined &&
+            t.manualEloDelta !== null &&
+            !Number.isNaN(Number(t.manualEloDelta))
+        )
+        .map((t) => t.id)
+    );
+    const gamesNet = games
+      .filter((g) => !manualTournamentIds.has(g.tournamentId))
+      .reduce((acc, g) => acc + g.eloChange, 0);
+    const manualTournamentsNet = tournaments.reduce(
+      (acc, t) =>
+        t.manualEloDelta !== undefined &&
+        t.manualEloDelta !== null &&
+        !Number.isNaN(Number(t.manualEloDelta))
+          ? acc + Number(t.manualEloDelta)
+          : acc,
+      0
+    );
     const netEloTotal =
-      Math.round(games.reduce((acc, g) => acc + g.eloChange, 0) * 10) / 10;
+      Math.round((gamesNet + manualTournamentsNet) * 10) / 10;
     const globalPerf = calculateFidePerformanceRating(games);
 
     return {
@@ -1128,7 +1154,7 @@ export default function App() {
       netEloTotal,
       globalPerf,
     };
-  }, [ratingHistory, profile, games]);
+  }, [ratingHistory, profile, games, tournaments]);
 
   // PAGE DE CONNEXION
   if (!session.isAuthenticated) {
@@ -1163,773 +1189,843 @@ export default function App() {
     { id: 'statistics', label: 'Statistiques & Elo', icon: TrendingUp },
   ];
 
-  return (
-    <div className="min-h-screen flex flex-col md:flex-row bg-slate-50 text-slate-900">
-      {/* BARRE DE NAVIGATION LATÉRALE GAUCHE (Desktop) */}
-      <aside className="hidden md:flex md:w-64 xl:w-68 shrink-0 bg-slate-900 text-slate-200 flex-col justify-between sticky top-0 h-screen border-r border-slate-800 select-none">
-        <div className="p-4 space-y-5 overflow-y-auto">
-          {/* Marque / Titre */}
-          <div className="flex items-center gap-3 px-2 pt-1">
-            <div className="w-8 h-8 rounded-md bg-slate-800 border border-slate-700 text-slate-200 flex items-center justify-center shrink-0">
-              <Trophy className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-sm font-bold tracking-tight text-white leading-tight">
-                FIDE Chess Ledger
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Registre Officiel & Amical
-              </div>
-            </div>
-          </div>
+  const activeSectionMeta: Record<ActiveTab, { title: string; subtitle: string }> = {
+    dashboard: {
+      title: 'Tableau de bord',
+      subtitle: 'Vue synthétique du classement FIDE et des performances',
+    },
+    tournaments: {
+      title: 'Tournois classés',
+      subtitle: 'Suivi des compétitions officielles et rondes',
+    },
+    games: {
+      title: 'Parties classées',
+      subtitle: 'Historique PGN, ouvertures et variations Elo',
+    },
+    players: {
+      title: 'Répertoire des joueurs',
+      subtitle: 'Adversaires classés, fédérations et confrontations',
+    },
+    statistics: {
+      title: 'Statistiques & Elo',
+      subtitle: 'Analyses avancées, simulateur et historique mensuel',
+    },
+    friendly: {
+      title: 'Parties amicales',
+      subtitle: 'Espace hors classement isolé (Bin #2)',
+    },
+    settings: {
+      title: 'Paramètres & Cache',
+      subtitle: 'Synchronisation JSONBin, corbeille et instantanés locaux',
+    },
+  };
 
-          {/* Carte résumé du joueur dans la barre latérale */}
+  const isAnySyncing = isLoading || isSyncing || isSyncingFriendly;
+
+  return (
+    <div className="min-h-screen flex flex-col md:flex-row bg-[#0B0E12] text-[#F1F4F8]">
+      {/* BARRE D'ICÔNES LATÉRALE GAUCHE (Desktop — Icon Rail 76px) */}
+      <aside className="hidden md:flex md:w-[76px] shrink-0 bg-[#0F131A] border-r border-[#1F2733] flex-col items-center justify-between py-4 sticky top-0 h-screen z-30 select-none">
+        <div className="flex flex-col items-center gap-3 w-full">
+          {/* Marque */}
+          <IconButton
+            variant="surface"
+            size="lg"
+            tooltipPos="right"
+            label="FIDE Chess Ledger — Accueil"
+            onClick={() => setActiveTab('dashboard')}
+            className="border-[#2E3A4D] bg-[#161D28]"
+          >
+            <Crown className="w-5 h-5 text-[#D4A853]" />
+          </IconButton>
+
+          {/* Drapeau & Profil Rapide */}
           <button
             type="button"
             onClick={() => setIsProfileModalOpen(true)}
-            className="w-full text-left p-3 rounded-lg bg-slate-800/80 hover:bg-slate-800 border border-slate-700/80 transition-colors cursor-pointer space-y-2"
+            aria-label={`${profile?.displayName || 'Mon Profil'} · Std ${dashboardStats.currentStd}`}
+            data-tooltip={`${profile?.displayName || 'Profil'} · Std ${dashboardStats.currentStd}`}
+            data-tooltip-pos="right"
+            className="w-11 h-11 rounded-xl bg-[#161D28] hover:bg-[#1E2634] border border-[#263142] flex items-center justify-center transition-colors cursor-pointer"
           >
-            <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-bold text-white truncate flex items-center gap-1.5">
-                <FederationFlag
-                  code={profile?.federation || 'FRA'}
-                  size="xs"
-                />
-                <span className="truncate">{profile?.displayName || 'Mon Profil'}</span>
-              </span>
-              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-700 text-slate-300">
-                K={profile?.kFactor || 20}
-              </span>
-            </div>
-
-            <div className="grid grid-cols-3 gap-1.5 text-center font-mono">
-              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
-                <div className="text-[10px] text-slate-400 font-sans">Class.</div>
-                <div className="text-xs font-bold text-white">
-                  {dashboardStats.currentStd}
-                </div>
-              </div>
-              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
-                <div className="text-[10px] text-slate-400 font-sans">Rapide</div>
-                <div className="text-xs font-bold text-slate-200">
-                  {dashboardStats.currentRapid}
-                </div>
-              </div>
-              <div className="p-1.5 rounded bg-slate-900/90 border border-slate-800">
-                <div className="text-[10px] text-slate-400 font-sans">Blitz</div>
-                <div className="text-xs font-bold text-slate-200">
-                  {dashboardStats.currentBlitz}
-                </div>
-              </div>
-            </div>
+            <FederationFlag code={profile?.federation || 'FRA'} size="sm" />
           </button>
 
-          {/* Menu 1 : Base Classée FIDE */}
-          <nav className="space-y-1">
-            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Classement FIDE (Bin #1)
-            </div>
+          <div className="w-7 h-px bg-[#1F2733] my-1" />
+
+          {/* Navigation FIDE (Bin #1) */}
+          <nav className="flex flex-col items-center gap-2" aria-label="Navigation principale">
             {fideNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = activeTab === item.id;
               return (
-                <button
+                <IconButton
                   key={item.id}
-                  type="button"
+                  variant={isActive ? 'active' : 'ghost'}
+                  size="lg"
+                  tooltipPos="right"
+                  label={item.label}
+                  badge={item.badge}
                   onClick={() => {
                     if (item.id === 'players') setSelectedOpponentId(null);
                     setActiveTab(item.id);
                   }}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                    isActive
-                      ? 'bg-white text-slate-900'
-                      : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-                  }`}
                 >
-                  <span className="flex items-center gap-2.5">
-                    <Icon
-                      className={`w-4 h-4 ${
-                        isActive ? 'text-slate-900' : 'text-slate-400'
-                      }`}
-                    />
-                    <span>{item.label}</span>
-                  </span>
-                  {item.badge !== undefined && (
-                    <span
-                      className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${
-                        isActive
-                          ? 'bg-slate-200 text-slate-900 font-bold'
-                          : 'bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
-                </button>
+                  <Icon className="w-5 h-5" />
+                </IconButton>
               );
             })}
           </nav>
 
-          {/* Menu 2 : Espace Indépendant Parties Amicales */}
-          <nav className="space-y-1 pt-2 border-t border-slate-800">
-            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Hors Classement (Bin #2)
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('friendly')}
-              className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab === 'friendly'
-                  ? 'bg-white text-slate-900'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
-            >
-              <span className="flex items-center gap-2.5">
-                <Coffee
-                  className={`w-4 h-4 ${
-                    activeTab === 'friendly' ? 'text-slate-900' : 'text-slate-400'
-                  }`}
-                />
-                <span>Parties Amicales</span>
-              </span>
-              <span
-                className={`text-[11px] font-mono px-1.5 py-0.5 rounded ${
-                  activeTab === 'friendly'
-                    ? 'bg-slate-200 text-slate-900 font-bold'
-                    : 'bg-slate-800 text-slate-400'
-                }`}
-              >
-                {friendlyGames.length}
-              </span>
-            </button>
-          </nav>
+          <div className="w-7 h-px bg-[#1F2733] my-1" />
 
-          {/* Menu 3 : Paramètres, Statuts JSONBin & Cache Local */}
-          <nav className="space-y-1 pt-2 border-t border-slate-800">
-            <div className="px-2.5 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
-              Système & Sauvegardes
-            </div>
-            <button
-              type="button"
-              onClick={() => setActiveTab('settings')}
-              className={`w-full flex items-center justify-between gap-3 px-3 py-2 rounded-md text-xs font-semibold transition-colors cursor-pointer ${
-                activeTab === 'settings'
-                  ? 'bg-white text-slate-900'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
-              }`}
+          {/* Navigation Amical (Bin #2) & Paramètres */}
+          <nav className="flex flex-col items-center gap-2" aria-label="Espaces secondaires">
+            <IconButton
+              variant={activeTab === 'friendly' ? 'active' : 'ghost'}
+              size="lg"
+              tooltipPos="right"
+              label="Parties Amicales (Bin #2)"
+              badge={friendlyGames.length}
+              onClick={() => setActiveTab('friendly')}
             >
-              <span className="flex items-center gap-2.5">
-                <Settings
-                  className={`w-4 h-4 ${
-                    activeTab === 'settings' ? 'text-slate-900' : 'text-slate-400'
-                  }`}
-                />
-                <span>Paramètres & Cache</span>
-              </span>
-              {deletedVault.length > 0 && (
-                <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-400/30">
-                  {deletedVault.length}
-                </span>
-              )}
-            </button>
+              <Coffee className="w-5 h-5" />
+            </IconButton>
+
+            <IconButton
+              variant={activeTab === 'settings' ? 'active' : 'ghost'}
+              size="lg"
+              tooltipPos="right"
+              label="Paramètres & Cache"
+              badge={deletedVault.length > 0 ? deletedVault.length : undefined}
+              onClick={() => setActiveTab('settings')}
+            >
+              <Settings className="w-5 h-5" />
+            </IconButton>
           </nav>
         </div>
 
-        {/* Bas de la barre latérale : Statut rapide des 2 Bins & Déconnexion */}
-        <div className="p-4 border-t border-slate-800 bg-slate-950/50 space-y-2.5">
-          <div className="space-y-1 px-1 text-[11px] text-slate-400">
-            <div className="flex items-center justify-between">
-              <span>Bin #1 (FIDE)</span>
-              <span
-                className={`font-mono ${
-                  fideStatus.state === 'error'
-                    ? 'text-rose-400'
-                    : 'text-emerald-400'
-                }`}
-              >
-                ● {fideStatus.state === 'syncing' ? 'Sync...' : 'Connecté'}
-              </span>
+        {/* Bas du Rail : Sync, Profil & Déconnexion */}
+        <div className="flex flex-col items-center gap-2 pt-3 border-t border-[#1F2733] w-full">
+          <IconButton
+            variant="surface"
+            size="md"
+            tooltipPos="right"
+            label={
+              isAnySyncing
+                ? 'Synchronisation en cours...'
+                : 'Synchroniser le JSONBin actif'
+            }
+            disabled={isAnySyncing}
+            onClick={() =>
+              activeTab === 'friendly'
+                ? loadFriendlyFromJsonBin()
+                : loadFromJsonBin()
+            }
+          >
+            <RefreshCw
+              className={`w-4 h-4 ${
+                isAnySyncing ? 'animate-spin text-emerald-400' : ''
+              }`}
+            />
+          </IconButton>
+
+          <IconButton
+            variant="surface"
+            size="md"
+            tooltipPos="right"
+            label={`Éditer le profil (${profile?.displayName || 'Joueur'})`}
+            onClick={() => setIsProfileModalOpen(true)}
+          >
+            <UserCheck className="w-4 h-4" />
+          </IconButton>
+
+          <IconButton
+            variant="danger"
+            size="md"
+            tooltipPos="right"
+            label="Déconnexion"
+            onClick={handleLogout}
+          >
+            <LogOut className="w-4 h-4" />
+          </IconButton>
+        </div>
+      </aside>
+
+      {/* Navigation Mobile Compacte (Icônes uniquement) */}
+      <div className="md:hidden bg-[#0F131A] border-b border-[#1F2733] px-3 py-2.5 space-y-2.5 sticky top-0 z-30">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-[#19202B] border border-[#2B3647] flex items-center justify-center shrink-0">
+              <Crown className="w-4 h-4 text-[#D4A853]" />
             </div>
-            <div className="flex items-center justify-between">
-              <span>Bin #2 (Amical)</span>
-              <span
-                className={`font-mono ${
-                  friendlyStatus.state === 'error'
-                    ? 'text-rose-400'
-                    : 'text-emerald-400'
-                }`}
-              >
-                ● {friendlyStatus.state === 'syncing' ? 'Sync...' : 'Isolé'}
-              </span>
+            <div className="min-w-0">
+              <div className="font-display text-sm font-bold text-[#F1F4F8] truncate">
+                {activeSectionMeta[activeTab].title}
+              </div>
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-1.5">
-            <button
-              type="button"
+          <div className="flex items-center gap-1.5 shrink-0">
+            <IconButton
+              variant="surface"
+              size="sm"
+              tooltipPos="bottom"
+              label="Synchroniser"
+              disabled={isAnySyncing}
               onClick={() =>
                 activeTab === 'friendly'
                   ? loadFriendlyFromJsonBin()
                   : loadFromJsonBin()
               }
-              disabled={isLoading || isSyncing || isSyncingFriendly}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors cursor-pointer"
-              title="Actualiser le JSONBin actif"
             >
               <RefreshCw
                 className={`w-3.5 h-3.5 ${
-                  isLoading || isSyncing || isSyncingFriendly
-                    ? 'animate-spin text-white'
-                    : ''
+                  isAnySyncing ? 'animate-spin text-emerald-400' : ''
                 }`}
               />
-              Sync
-            </button>
+            </IconButton>
 
             <button
               type="button"
               onClick={() => setIsProfileModalOpen(true)}
-              className="inline-flex items-center justify-center gap-1.5 px-2.5 py-1.5 text-xs font-semibold text-slate-200 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-md transition-colors cursor-pointer"
+              aria-label="Profil joueur"
+              data-tooltip={profile?.displayName || 'Profil'}
+              data-tooltip-pos="bottom"
+              className="w-8 h-8 rounded-lg bg-[#19202B] border border-[#2B3647] flex items-center justify-center cursor-pointer"
             >
-              <UserCheck className="w-3.5 h-3.5 text-slate-300" />
-              Profil
+              <FederationFlag code={profile?.federation || 'FRA'} size="xs" />
             </button>
-          </div>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="w-full inline-flex items-center justify-center gap-2 px-3 py-1.5 text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            Déconnexion
-          </button>
-        </div>
-      </aside>
-
-      {/* Navigation Mobile (Bandeau supérieur uniquement sur petit écran) */}
-      <div className="md:hidden bg-slate-900 text-white p-4 space-y-3 border-b border-slate-800">
-        <div className="flex items-center justify-between">
-          <div className="font-bold text-sm flex items-center gap-2">
-            <Trophy className="w-4 h-4 text-slate-300" />
-            FIDE Chess Ledger
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsProfileModalOpen(true)}
-              className="px-2.5 py-1 text-xs font-semibold bg-slate-800 rounded-md"
-            >
-              {profile?.displayName || 'Profil'}
-            </button>
-            <button
-              type="button"
+            <IconButton
+              variant="danger"
+              size="sm"
+              tooltipPos="bottom"
+              label="Déconnexion"
               onClick={handleLogout}
-              className="p-1.5 text-slate-300 bg-slate-800 rounded-md"
             >
-              <LogOut className="w-4 h-4" />
-            </button>
+              <LogOut className="w-3.5 h-3.5" />
+            </IconButton>
           </div>
         </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+
+        <div className="flex items-center justify-between gap-1.5 overflow-x-auto pb-0.5">
           {fideNavItems.map((item) => {
             const Icon = item.icon;
             const active = activeTab === item.id;
             return (
-              <button
+              <IconButton
                 key={item.id}
-                type="button"
+                variant={active ? 'active' : 'ghost'}
+                size="md"
+                tooltipPos="bottom"
+                label={item.label}
+                badge={item.badge}
                 onClick={() => {
                   if (item.id === 'players') setSelectedOpponentId(null);
                   setActiveTab(item.id);
                 }}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
-                  active
-                    ? 'bg-white text-slate-900'
-                    : 'bg-slate-800 text-slate-300'
-                }`}
               >
-                <Icon className="w-3.5 h-3.5" />
-                {item.label}
-              </button>
+                <Icon className="w-4 h-4" />
+              </IconButton>
             );
           })}
-          <button
-            type="button"
+          <IconButton
+            variant={activeTab === 'friendly' ? 'active' : 'ghost'}
+            size="md"
+            tooltipPos="bottom"
+            label="Parties Amicales"
+            badge={friendlyGames.length}
             onClick={() => setActiveTab('friendly')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
-              activeTab === 'friendly'
-                ? 'bg-white text-slate-900'
-                : 'bg-slate-800 text-slate-300'
-            }`}
           >
-            <Coffee className="w-3.5 h-3.5" />
-            Parties Amicales
-          </button>
-          <button
-            type="button"
+            <Coffee className="w-4 h-4" />
+          </IconButton>
+          <IconButton
+            variant={activeTab === 'settings' ? 'active' : 'ghost'}
+            size="md"
+            tooltipPos="bottom"
+            label="Paramètres & Cache"
+            badge={deletedVault.length > 0 ? deletedVault.length : undefined}
             onClick={() => setActiveTab('settings')}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-semibold whitespace-nowrap ${
-              activeTab === 'settings'
-                ? 'bg-white text-slate-900'
-                : 'bg-slate-800 text-slate-300'
-            }`}
           >
-            <Settings className="w-3.5 h-3.5" />
-            Paramètres
-          </button>
+            <Settings className="w-4 h-4" />
+          </IconButton>
         </div>
       </div>
 
       {/* Zone Principale de Contenu à Droite */}
       <div className="flex-1 min-w-0 flex flex-col justify-between">
-        <main className="max-w-[1260px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-7 space-y-6">
-          {errorBanner && (
-            <div className="p-4 bg-rose-50 border border-rose-200 rounded-lg flex items-start justify-between gap-3 text-xs text-rose-900">
-              <div className="flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-700 shrink-0 mt-0.5" />
-                <div className="font-mono break-all">{errorBanner}</div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setErrorBanner(null)}
-                className="text-rose-700 underline shrink-0 font-semibold"
-              >
-                Fermer
-              </button>
+        <div>
+          {/* Barre Contextuelle Sticky (Desktop) */}
+          <header className="hidden md:flex h-14 border-b border-[#1F2733] bg-[#0B0E12]/90 backdrop-blur-md sticky top-0 z-20 px-7 lg:px-10 items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <h2 className="font-display text-sm font-bold text-[#F1F4F8] tracking-tight truncate">
+                {activeSectionMeta[activeTab].title}
+              </h2>
+              <span className="text-[#334155]" aria-hidden="true">
+                /
+              </span>
+              <span className="text-xs text-[#9BA7B8] truncate">
+                {activeSectionMeta[activeTab].subtitle}
+              </span>
             </div>
-          )}
 
-          {/* Bannière si la base JSONBin #1 est vide (uniquement sur les onglets FIDE) */}
-          {!isLoading &&
-            activeTab !== 'friendly' &&
-            activeTab !== 'settings' &&
-            games.length === 0 &&
-            tournaments.length === 0 && (
-              <div className="bg-white border border-slate-300 rounded-lg p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
-                <div className="space-y-1 max-w-2xl">
-                  <h2 className="text-sm font-bold text-slate-900">
-                    Base JSONBin Classée (#1) prête à l’emploi
-                  </h2>
-                  <p className="text-xs text-slate-600">
-                    Vous pouvez enregistrer vos tournois et parties dès maintenant, ou charger des données d’exemple pour explorer l’interface.
-                  </p>
+            <div className="flex items-center gap-3 shrink-0">
+              <div className="hidden lg:flex items-center gap-2 text-xs font-mono text-[#9BA7B8]">
+                <FederationFlag code={profile?.federation || 'FRA'} size="xs" />
+                <span className="text-[#F1F4F8] font-semibold">
+                  {profile?.displayName || 'Profil'}
+                </span>
+                <span className="text-[#475569]">·</span>
+                <span className="text-emerald-400 font-bold">
+                  Std {dashboardStats.currentStd}
+                </span>
+                <span className="text-[#475569]">·</span>
+                <span className="text-[#D4A853]">
+                  Rap {dashboardStats.currentRapid}
+                </span>
+                <span className="text-[#475569]">·</span>
+                <span className="text-sky-400">
+                  Blz {dashboardStats.currentBlitz}
+                </span>
+              </div>
+
+              <div className="h-4 w-px bg-[#1F2733] hidden lg:block" />
+
+              <div className="flex items-center gap-1.5">
+                <IconButton
+                  variant="primary"
+                  size="sm"
+                  tooltipPos="bottom"
+                  label="Nouveau tournoi ou partie"
+                  onClick={() => setActiveTab('tournaments')}
+                >
+                  <Plus className="w-4 h-4" />
+                </IconButton>
+
+                <IconButton
+                  variant="surface"
+                  size="sm"
+                  tooltipPos="bottom"
+                  label="Synchroniser JSONBin"
+                  disabled={isAnySyncing}
+                  onClick={() =>
+                    activeTab === 'friendly'
+                      ? loadFriendlyFromJsonBin()
+                      : loadFromJsonBin()
+                  }
+                >
+                  <RefreshCw
+                    className={`w-3.5 h-3.5 ${
+                      isAnySyncing ? 'animate-spin text-emerald-400' : ''
+                    }`}
+                  />
+                </IconButton>
+              </div>
+            </div>
+          </header>
+
+          <main className="max-w-[1280px] w-full mx-auto px-4 sm:px-7 lg:px-10 py-6 space-y-6">
+            {errorBanner && (
+              <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-rose-200">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <div className="font-mono break-all">{errorBanner}</div>
                 </div>
-                <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleLoadSampleData}
-                    disabled={isSyncing}
-                    className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 disabled:opacity-50 cursor-pointer"
-                  >
-                    <Database className="w-3.5 h-3.5" />
-                    {isSyncing
-                      ? 'Chargement...'
-                      : 'Charger des données d’exemple'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('tournaments')}
-                    className="px-3.5 py-2 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer"
-                  >
-                    Créer mon premier tournoi
-                  </button>
-                </div>
+                <IconButton
+                  variant="danger"
+                  size="xs"
+                  label="Fermer l'alerte"
+                  onClick={() => setErrorBanner(null)}
+                >
+                  <X className="w-3.5 h-3.5" />
+                </IconButton>
               </div>
             )}
 
-          {/* ONGLET 1 : DASHBOARD CLASSÉ FIDE */}
-          {activeTab === 'dashboard' && (
-            <div className="space-y-6">
-              {/* Carte Principale du Joueur */}
-              <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-5 shadow-2xs">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 font-mono">
-                      <span className="font-semibold text-slate-800">
-                        ID FIDE : {profile?.fideId || 'Non renseigné'}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-semibold text-slate-800">
-                        Code FFE : {profile?.ffeId || 'Non renseigné'}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span className="font-semibold text-slate-600">
-                        Facteur K = {profile?.kFactor || 20}
-                      </span>
-                      {profile?.club && (
-                        <>
-                          <span aria-hidden="true">·</span>
-                          <span className="font-sans font-semibold text-slate-700">
-                            {profile.club}
-                          </span>
-                        </>
-                      )}
-                    </div>
-                    <h1 className="text-2xl font-bold text-slate-900 mt-1">
-                      {profile?.displayName || 'Mon Profil Échecs'}
-                    </h1>
-                  </div>
-
-                  <div className="flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('tournaments')}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 rounded-md hover:bg-slate-800 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3.5 h-3.5" />
-                      Enregistrer un tournoi / une partie
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('friendly')}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-md transition-colors cursor-pointer"
-                    >
-                      <Coffee className="w-3.5 h-3.5 text-slate-700" />
-                      Parties Amicales ({friendlyGames.length})
-                    </button>
-                  </div>
-                </div>
-
-                {/* Les 6 Indicateurs Clés du Dashboard (Sobres et Professionnels) */}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
-                  <div className="p-4 bg-gradient-to-br from-indigo-50/80 to-white border border-indigo-200/90 rounded-xl shadow-2xs hover:border-indigo-300 transition-all">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-indigo-700">
-                      Elo Classique
-                    </div>
-                    <div className="text-2xl font-bold text-indigo-950 mt-1">
-                      {dashboardStats.currentStd}
-                    </div>
-                    <div className="text-[11px] font-sans text-indigo-600/80 font-medium mt-1">
-                      Cible : {profile?.targetElo || 2000}
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-br from-sky-50/80 to-white border border-sky-200/90 rounded-xl shadow-2xs hover:border-sky-300 transition-all">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-sky-700">
-                      Elo Rapide
-                    </div>
-                    <div className="text-2xl font-bold text-sky-950 mt-1">
-                      {dashboardStats.currentRapid}
-                    </div>
-                    <div className="text-[11px] font-sans text-sky-600/80 font-medium mt-1">
-                      Cadence 10-25m
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-br from-amber-50/80 to-white border border-amber-200/90 rounded-xl shadow-2xs hover:border-amber-300 transition-all">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-amber-700">
-                      Elo Blitz
-                    </div>
-                    <div className="text-2xl font-bold text-amber-950 mt-1">
-                      {dashboardStats.currentBlitz}
-                    </div>
-                    <div className="text-[11px] font-sans text-amber-600/80 font-medium mt-1">
-                      Cadence 3-5m
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-br from-emerald-50/80 to-white border border-emerald-200/90 rounded-xl shadow-2xs hover:border-emerald-300 transition-all">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-emerald-700">
-                      Taux de Victoire
-                    </div>
-                    <div className="text-2xl font-bold text-emerald-950 mt-1">
-                      {dashboardStats.winPct}%
-                    </div>
-                    <div className="text-[11px] font-sans font-semibold text-emerald-700 mt-1">
-                      +{dashboardStats.wins}V · ={dashboardStats.draws}N · -{dashboardStats.losses}D
-                    </div>
-                  </div>
-
-                  <div className="p-4 bg-gradient-to-br from-purple-50/80 to-white border border-purple-200/90 rounded-xl shadow-2xs hover:border-purple-300 transition-all">
-                    <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-purple-700">
-                      Performance FIDE
-                    </div>
-                    <div className="text-2xl font-bold text-purple-950 mt-1">
-                      {dashboardStats.globalPerf || '—'}
-                    </div>
-                    <div className="text-[11px] font-sans text-purple-600/80 font-medium mt-1">
-                      Sur {dashboardStats.totalGames} parties
-                    </div>
-                  </div>
-
-                  <div className={`p-4 rounded-xl border shadow-2xs transition-all ${
-                    dashboardStats.netEloTotal >= 0
-                      ? 'bg-gradient-to-br from-teal-50/90 to-white border-teal-200/90'
-                      : 'bg-gradient-to-br from-rose-50/90 to-white border-rose-200/90'
-                  }`}>
-                    <div className={`text-[11px] font-sans font-bold uppercase tracking-wider ${
-                      dashboardStats.netEloTotal >= 0 ? 'text-teal-700' : 'text-rose-700'
-                    }`}>
-                      Bilan Elo Net
-                    </div>
-                    <div
-                      className={`text-2xl font-bold mt-1 ${
-                        dashboardStats.netEloTotal >= 0
-                          ? 'text-teal-900'
-                          : 'text-rose-900'
-                      }`}
-                    >
-                      {dashboardStats.netEloTotal >= 0
-                        ? `+${dashboardStats.netEloTotal.toFixed(1)}`
-                        : dashboardStats.netEloTotal.toFixed(1)}
-                    </div>
-                    <div className="text-[11px] font-sans text-slate-500 font-medium mt-1">
-                      Variation cumulée
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Graphique d'évolution mensuelle sur le Dashboard */}
-              <div className="bg-white border border-slate-200 rounded-lg p-6 space-y-4 shadow-2xs">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-bold text-slate-900">
-                      Évolution mensuelle du classement Elo
+            {/* Bannière si la base JSONBin #1 est vide (uniquement sur les onglets FIDE) */}
+            {!isLoading &&
+              activeTab !== 'friendly' &&
+              activeTab !== 'settings' &&
+              games.length === 0 &&
+              tournaments.length === 0 && (
+                <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1 max-w-2xl">
+                    <h2 className="font-display text-sm font-bold text-[#F1F4F8]">
+                      Base JSONBin Classée (#1) prête à l’emploi
                     </h2>
-                    <p className="text-xs text-slate-500">
-                      Suivi comparatif des trois cadences (Classique, Rapide et Blitz).
+                    <p className="text-xs text-[#9BA7B8]">
+                      Enregistrez vos tournois et parties dès maintenant, ou chargez des données d’exemple pour explorer l’atelier.
                     </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab('statistics')}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-bold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-md transition-colors cursor-pointer"
-                  >
-                    Statistiques détaillées
-                    <ArrowUpRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <EloEvolutionChart
-                  records={ratingHistory}
-                  targetElo={profile?.targetElo || 2000}
-                />
-              </div>
-
-              {/* Résumé des Derniers Tournois & Principaux Adversaires */}
-              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                {/* Derniers Tournois */}
-                <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
-                  <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                      <Trophy className="w-4 h-4 text-slate-600" />
-                      Tournois Classés Récents ({tournaments.length})
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => setActiveTab('tournaments')}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
+                  <div className="flex items-center gap-2 shrink-0">
+                    <IconButton
+                      variant="primary"
+                      size="md"
+                      label={
+                        isSyncing
+                          ? 'Chargement...'
+                          : 'Charger des données d’exemple'
+                      }
+                      disabled={isSyncing}
+                      onClick={handleLoadSampleData}
                     >
-                      Tout voir
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
+                      <Database className="w-4 h-4" />
+                    </IconButton>
+                    <IconButton
+                      variant="gold"
+                      size="md"
+                      label="Créer mon premier tournoi"
+                      onClick={() => setActiveTab('tournaments')}
+                    >
+                      <Plus className="w-4 h-4" />
+                    </IconButton>
+                  </div>
+                </div>
+              )}
+
+            {/* ONGLET 1 : DASHBOARD CLASSÉ FIDE */}
+            {activeTab === 'dashboard' && (
+              <div className="space-y-6">
+                {/* Carte Principale du Joueur */}
+                <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-6 space-y-5">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-[#232C3A] pb-5">
+                    <div className="space-y-1.5">
+                      <div className="flex flex-wrap items-center gap-2 text-xs text-[#9BA7B8] font-mono">
+                        <FederationFlag
+                          code={profile?.federation || 'FRA'}
+                          size="sm"
+                          showCode
+                        />
+                        <span className="text-[#334155]" aria-hidden="true">
+                          ·
+                        </span>
+                        <span>
+                          FIDE{' '}
+                          <strong className="text-[#F1F4F8]">
+                            {profile?.fideId || '—'}
+                          </strong>
+                        </span>
+                        <span className="text-[#334155]" aria-hidden="true">
+                          ·
+                        </span>
+                        <span>
+                          FFE{' '}
+                          <strong className="text-[#F1F4F8]">
+                            {profile?.ffeId || '—'}
+                          </strong>
+                        </span>
+                        <span className="text-[#334155]" aria-hidden="true">
+                          ·
+                        </span>
+                        <span className="text-[#D4A853]">
+                          K={profile?.kFactor || 20}
+                        </span>
+                        {profile?.club && (
+                          <>
+                            <span className="text-[#334155]" aria-hidden="true">
+                              ·
+                            </span>
+                            <span className="font-sans text-[#CBD5E1]">
+                              {profile.club}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <h1 className="font-display text-2xl sm:text-3xl font-bold text-[#F1F4F8] tracking-tight">
+                        {profile?.displayName || 'Mon Profil Échecs'}
+                      </h1>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <IconButton
+                        variant="primary"
+                        size="lg"
+                        label="Enregistrer un tournoi ou une partie"
+                        onClick={() => setActiveTab('tournaments')}
+                      >
+                        <Plus className="w-5 h-5" />
+                      </IconButton>
+                      <IconButton
+                        variant="surface"
+                        size="lg"
+                        label="Ouvrir les Parties Amicales"
+                        badge={friendlyGames.length}
+                        onClick={() => setActiveTab('friendly')}
+                      >
+                        <Coffee className="w-5 h-5 text-[#D4A853]" />
+                      </IconButton>
+                      <IconButton
+                        variant="surface"
+                        size="lg"
+                        label="Modifier mon profil joueur"
+                        onClick={() => setIsProfileModalOpen(true)}
+                      >
+                        <UserCheck className="w-5 h-5" />
+                      </IconButton>
+                    </div>
                   </div>
 
-                  {tournaments.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-500">
-                      Aucun tournoi enregistré.
+                  {/* Les 6 Indicateurs Clés du Dashboard (Obsidian Matte) */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-emerald-500/40 transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Elo Classique
+                      </div>
+                      <div className="text-2xl font-bold text-emerald-400 mt-1.5">
+                        {dashboardStats.currentStd}
+                      </div>
+                      <div className="text-[11px] font-sans text-[#6C788B] mt-1">
+                        Cible :{' '}
+                        <span className="font-mono text-[#D4A853]">
+                          {profile?.targetElo || 2000}
+                        </span>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="divide-y divide-slate-200 text-xs">
-                      {tournaments
-                        .slice()
-                        .sort((a, b) => b.startDate.localeCompare(a.startDate))
-                        .slice(0, 4)
-                        .map((t) => {
-                          const tGames = games.filter(
-                            (g) => g.tournamentId === t.id
+
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-[#D4A853]/40 transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Elo Rapide
+                      </div>
+                      <div className="text-2xl font-bold text-[#D4A853] mt-1.5">
+                        {dashboardStats.currentRapid}
+                      </div>
+                      <div className="text-[11px] font-sans text-[#6C788B] mt-1">
+                        Cadence 10-25m
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-sky-400/40 transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Elo Blitz
+                      </div>
+                      <div className="text-2xl font-bold text-sky-400 mt-1.5">
+                        {dashboardStats.currentBlitz}
+                      </div>
+                      <div className="text-[11px] font-sans text-[#6C788B] mt-1">
+                        Cadence 3-5m
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-[#36445A] transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Victoires
+                      </div>
+                      <div className="text-2xl font-bold text-[#F1F4F8] mt-1.5">
+                        {dashboardStats.winPct}%
+                      </div>
+                      <div className="text-[11px] font-mono text-[#9BA7B8] mt-1">
+                        +{dashboardStats.wins} · ={dashboardStats.draws} · -
+                        {dashboardStats.losses}
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-[#36445A] transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Perf. FIDE
+                      </div>
+                      <div className="text-2xl font-bold text-[#F1F4F8] mt-1.5">
+                        {dashboardStats.globalPerf || '—'}
+                      </div>
+                      <div className="text-[11px] font-sans text-[#6C788B] mt-1">
+                        Sur {dashboardStats.totalGames} parties
+                      </div>
+                    </div>
+
+                    <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl hover:border-[#36445A] transition-colors">
+                      <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#9BA7B8]">
+                        Bilan Net
+                      </div>
+                      <div
+                        className={`text-2xl font-bold mt-1.5 ${
+                          dashboardStats.netEloTotal >= 0
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }`}
+                      >
+                        {dashboardStats.netEloTotal >= 0
+                          ? `+${dashboardStats.netEloTotal.toFixed(1)}`
+                          : dashboardStats.netEloTotal.toFixed(1)}
+                      </div>
+                      <div className="text-[11px] font-sans text-[#6C788B] mt-1">
+                        Variation cumulée
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Graphique d'évolution mensuelle sur le Dashboard */}
+                <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-6 space-y-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <h2 className="font-display text-base font-bold text-[#F1F4F8]">
+                        Évolution mensuelle du classement Elo
+                      </h2>
+                      <p className="text-xs text-[#9BA7B8]">
+                        Suivi comparatif des trois cadences (Classique, Rapide et Blitz).
+                      </p>
+                    </div>
+                    <IconButton
+                      variant="surface"
+                      size="md"
+                      label="Ouvrir les statistiques détaillées"
+                      onClick={() => setActiveTab('statistics')}
+                    >
+                      <ArrowUpRight className="w-4 h-4" />
+                    </IconButton>
+                  </div>
+
+                  <EloEvolutionChart
+                    records={ratingHistory}
+                    targetElo={profile?.targetElo || 2000}
+                  />
+                </div>
+
+                {/* Résumé des Derniers Tournois & Principaux Adversaires */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                  {/* Derniers Tournois */}
+                  <div className="lg:col-span-7 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#19202B]/70 flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-2">
+                        <Trophy className="w-4 h-4 text-[#D4A853]" />
+                        Tournois Classés Récents ({tournaments.length})
+                      </h3>
+                      <IconButton
+                        variant="ghost"
+                        size="sm"
+                        label="Voir tous les tournois"
+                        onClick={() => setActiveTab('tournaments')}
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                      </IconButton>
+                    </div>
+
+                    {tournaments.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-[#6C788B]">
+                        Aucun tournoi enregistré.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[#232C3A] text-xs">
+                        {tournaments
+                          .slice()
+                          .sort((a, b) => b.startDate.localeCompare(a.startDate))
+                          .slice(0, 4)
+                          .map((t) => {
+                            const tGames = games.filter(
+                              (g) => g.tournamentId === t.id
+                            );
+                            const score = tGames.reduce(
+                              (acc, g) => acc + g.playerScore,
+                              0
+                            );
+                            const gamesNetElo =
+                              Math.round(
+                                tGames.reduce((acc, g) => acc + g.eloChange, 0) *
+                                  10
+                              ) / 10;
+                            const netElo =
+                              t.manualEloDelta !== undefined &&
+                              t.manualEloDelta !== null &&
+                              !Number.isNaN(Number(t.manualEloDelta))
+                                ? Math.round(Number(t.manualEloDelta) * 10) / 10
+                                : gamesNetElo;
+                            const perf =
+                              t.manualPerformance &&
+                              Number(t.manualPerformance) > 0
+                                ? Math.round(Number(t.manualPerformance))
+                                : calculateFidePerformanceRating(tGames);
+
+                            return (
+                              <div
+                                key={t.id}
+                                onClick={() => {
+                                  setSelectedTournamentFilter(t.id);
+                                  setActiveTab('games');
+                                }}
+                                className="p-4 hover:bg-[#19202B] cursor-pointer flex items-center justify-between gap-4 transition-colors"
+                              >
+                                <div className="min-w-0">
+                                  <div className="font-semibold text-[#F1F4F8] truncate">
+                                    {t.name}
+                                  </div>
+                                  <div className="text-[11px] text-[#9BA7B8] mt-0.5 flex flex-wrap items-center gap-1.5">
+                                    <span>{t.location}</span>
+                                    <span className="text-[#475569]">·</span>
+                                    <span className="text-[#CBD5E1]">
+                                      {t.timeControl === 'Standard'
+                                        ? 'Classique'
+                                        : t.timeControl === 'Rapid'
+                                        ? 'Rapide'
+                                        : 'Blitz'}
+                                    </span>
+                                    {t.finalRank ? (
+                                      <>
+                                        <span className="text-[#475569]">·</span>
+                                        <span className="font-mono text-[#D4A853]">
+                                          {t.finalRank}e
+                                          {t.totalPlayers
+                                            ? ` / ${t.totalPlayers}`
+                                            : ''}
+                                        </span>
+                                      </>
+                                    ) : null}
+                                  </div>
+                                </div>
+
+                                <div className="text-right font-mono shrink-0">
+                                  <div className="font-bold text-[#F1F4F8]">
+                                    {score}/{tGames.length}{' '}
+                                    <span
+                                      className={
+                                        netElo >= 0
+                                          ? 'text-emerald-400'
+                                          : 'text-rose-400'
+                                      }
+                                    >
+                                      ({netElo >= 0 ? `+${netElo}` : netElo})
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-[#6C788B]">
+                                    Perf : {perf || '—'}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Derniers Joueurs Affrontés */}
+                  <div className="lg:col-span-5 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+                    <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#19202B]/70 flex items-center justify-between">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-2">
+                        <Users className="w-4 h-4 text-emerald-400" />
+                        Joueurs Affrontés ({opponents.length})
+                      </h3>
+                      <IconButton
+                        variant="ghost"
+                        size="sm"
+                        label="Ouvrir le répertoire des joueurs"
+                        onClick={() => {
+                          setSelectedOpponentId(null);
+                          setActiveTab('players');
+                        }}
+                      >
+                        <ArrowUpRight className="w-4 h-4" />
+                      </IconButton>
+                    </div>
+
+                    {opponents.length === 0 ? (
+                      <div className="p-8 text-center text-xs text-[#6C788B]">
+                        Aucun adversaire enregistré.
+                      </div>
+                    ) : (
+                      <div className="divide-y divide-[#232C3A] text-xs">
+                        {opponents.slice(0, 5).map((opp) => {
+                          const oppGames = games.filter(
+                            (g) =>
+                              g.opponentId === opp.id ||
+                              (opp.fideId && g.opponentFideId === opp.fideId) ||
+                              formatPlayerNameLastFirst(
+                                g.opponentName
+                              ).toLowerCase() ===
+                                formatPlayerNameLastFirst(opp.name).toLowerCase()
                           );
-                          const score = tGames.reduce(
-                            (acc, g) => acc + g.playerScore,
-                            0
+                          const wins = oppGames.filter(
+                            (g) => g.playerScore === 1
+                          ).length;
+                          const draws = oppGames.filter(
+                            (g) => g.playerScore === 0.5
+                          ).length;
+                          const losses = oppGames.filter(
+                            (g) => g.playerScore === 0
+                          ).length;
+                          const winRate =
+                            oppGames.length > 0
+                              ? Math.round((wins / oppGames.length) * 100)
+                              : 0;
+                          const uncertain = Boolean(
+                            opp.isNameUncertain || hasQuestionMarkName(opp.name)
                           );
-                          const netElo =
-                            Math.round(
-                              tGames.reduce((acc, g) => acc + g.eloChange, 0) *
-                                10
-                            ) / 10;
-                          const perf = calculateFidePerformanceRating(tGames);
+
+                          const stdUnknown = isOpponentEloUnknownForCadence(
+                            opp,
+                            'Standard'
+                          );
+                          const rapidUnknown = isOpponentEloUnknownForCadence(
+                            opp,
+                            'Rapid'
+                          );
+                          const blitzUnknown = isOpponentEloUnknownForCadence(
+                            opp,
+                            'Blitz'
+                          );
 
                           return (
                             <div
-                              key={t.id}
+                              key={opp.id}
                               onClick={() => {
-                                setSelectedTournamentFilter(t.id);
-                                setActiveTab('games');
+                                setSelectedOpponentId(opp.id);
+                                setActiveTab('players');
                               }}
-                              className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
+                              className="p-4 hover:bg-[#19202B] cursor-pointer flex items-center justify-between gap-4 transition-colors"
                             >
-                              <div>
-                                <div className="font-bold text-slate-900">
-                                  {t.name}
-                                </div>
-                                <div className="text-[11px] text-slate-500 mt-0.5 flex flex-wrap items-center gap-1.5">
-                                  <span>{t.location}</span>
-                                  <span>·</span>
-                                  <span className="font-semibold text-slate-700">
-                                    {t.timeControl === 'Standard'
-                                      ? 'Classique'
-                                      : t.timeControl === 'Rapid'
-                                      ? 'Rapide'
-                                      : 'Blitz'}
+                              <div className="min-w-0">
+                                <div className="font-semibold text-[#F1F4F8] flex items-center gap-2 min-w-0">
+                                  <FederationFlag
+                                    code={opp.federation || 'FRA'}
+                                    size="xs"
+                                  />
+                                  {opp.title !== 'None' && (
+                                    <span className="font-mono text-[10px] font-bold text-[#D4A853] shrink-0">
+                                      {opp.title}
+                                    </span>
+                                  )}
+                                  <span className="truncate">
+                                    {formatPlayerNameLastFirst(opp.name)}
                                   </span>
-                                  {t.finalRank ? (
-                                    <>
-                                      <span>·</span>
-                                      <span className="font-semibold text-slate-700">
-                                        Place : {t.finalRank}e
-                                        {t.totalPlayers
-                                          ? ` / ${t.totalPlayers}`
-                                          : ''}
-                                      </span>
-                                    </>
-                                  ) : null}
+                                  {uncertain && (
+                                    <span className="text-[10px] font-mono font-bold text-[#D4A853] shrink-0">
+                                      (?)
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-[11px] font-mono text-[#9BA7B8] mt-1 flex flex-wrap items-center gap-2">
+                                  <span>
+                                    Std{' '}
+                                    {stdUnknown
+                                      ? '?'
+                                      : opp.standardElo || opp.elo}
+                                  </span>
+                                  <span className="text-[#475569]">·</span>
+                                  <span>
+                                    Rap {rapidUnknown ? '?' : opp.rapidElo}
+                                  </span>
+                                  <span className="text-[#475569]">·</span>
+                                  <span>
+                                    Blz {blitzUnknown ? '?' : opp.blitzElo}
+                                  </span>
                                 </div>
                               </div>
 
                               <div className="text-right font-mono shrink-0">
-                                <div className="font-bold text-slate-900">
-                                  {score}/{tGames.length}{' '}
-                                  <span
-                                    className={
-                                      netElo >= 0
-                                        ? 'text-emerald-700'
-                                        : 'text-rose-700'
-                                    }
-                                  >
-                                    ({netElo >= 0 ? `+${netElo}` : netElo})
-                                  </span>
+                                <div className="font-bold text-[#F1F4F8]">
+                                  {winRate}%
                                 </div>
-                                <div className="text-[11px] text-slate-500">
-                                  Perf : {perf || '—'}
+                                <div className="text-[11px] text-[#6C788B]">
+                                  +{wins} · ={draws} · -{losses}
                                 </div>
                               </div>
                             </div>
                           );
                         })}
-                    </div>
-                  )}
-                </div>
-
-                {/* Derniers Joueurs Affrontés */}
-                <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
-                  <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                    <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                      <Users className="w-4 h-4 text-slate-600" />
-                      Joueurs Classés Affrontés ({opponents.length})
-                    </h3>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedOpponentId(null);
-                        setActiveTab('players');
-                      }}
-                      className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
-                    >
-                      Répertoire
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
+                      </div>
+                    )}
                   </div>
-
-                  {opponents.length === 0 ? (
-                    <div className="p-8 text-center text-xs text-slate-500">
-                      Aucun adversaire enregistré.
-                    </div>
-                  ) : (
-                    <div className="divide-y divide-slate-200 text-xs">
-                      {opponents.slice(0, 5).map((opp) => {
-                        const oppGames = games.filter(
-                          (g) =>
-                            g.opponentId === opp.id ||
-                            (opp.fideId && g.opponentFideId === opp.fideId) ||
-                            formatPlayerNameLastFirst(
-                              g.opponentName
-                            ).toLowerCase() ===
-                              formatPlayerNameLastFirst(opp.name).toLowerCase()
-                        );
-                        const wins = oppGames.filter(
-                          (g) => g.playerScore === 1
-                        ).length;
-                        const draws = oppGames.filter(
-                          (g) => g.playerScore === 0.5
-                        ).length;
-                        const losses = oppGames.filter(
-                          (g) => g.playerScore === 0
-                        ).length;
-                        const winRate =
-                          oppGames.length > 0
-                            ? Math.round((wins / oppGames.length) * 100)
-                            : 0;
-                        const uncertain = Boolean(
-                          opp.isNameUncertain || hasQuestionMarkName(opp.name)
-                        );
-
-                        return (
-                          <div
-                            key={opp.id}
-                            onClick={() => {
-                              setSelectedOpponentId(opp.id);
-                              setActiveTab('players');
-                            }}
-                            className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
-                          >
-                            <div>
-                              <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                                {opp.title !== 'None' && (
-                                  <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-200 text-slate-800">
-                                    {opp.title}
-                                  </span>
-                                )}
-                                <span>{formatPlayerNameLastFirst(opp.name)}</span>
-                                {uncertain && (
-                                  <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
-                                    ?
-                                  </span>
-                                )}
-                              </div>
-                              <div className="text-[11px] font-mono text-slate-500 mt-0.5 flex flex-wrap items-center gap-2">
-                                <span>
-                                  Std{' '}
-                                  {opp.isStandardEloUnknown || opp.isEloUnknown
-                                    ? '?'
-                                    : opp.standardElo || opp.elo}
-                                </span>
-                                <span>·</span>
-                                <span>
-                                  Rap{' '}
-                                  {opp.isRapidEloUnknown || opp.isEloUnknown
-                                    ? '?'
-                                    : opp.rapidElo || opp.elo}
-                                </span>
-                                <span>·</span>
-                                <span>
-                                  Blz{' '}
-                                  {opp.isBlitzEloUnknown || opp.isEloUnknown
-                                    ? '?'
-                                    : opp.blitzElo || opp.elo}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="text-right font-mono shrink-0">
-                              <div className="font-bold text-slate-900">
-                                {winRate}% victoires
-                              </div>
-                              <div className="text-[11px] text-slate-500">
-                                +{wins}V · ={draws}N · -{losses}D
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
                 </div>
               </div>
-            </div>
-          )}
+            )}
 
           {/* ONGLET 2 : TOURNOIS CLASSÉS */}
           {activeTab === 'tournaments' && (
@@ -1997,6 +2093,7 @@ export default function App() {
             <StatisticsSection
               records={ratingHistory}
               games={games}
+              tournaments={tournaments}
               profile={profile}
               onSaveRatingRecord={handleSaveRatingRecord}
               onDeleteRatingRecord={handleDeleteRatingRecord}
@@ -2093,16 +2190,17 @@ export default function App() {
               onRestoreSingleEntity={handleRestoreSingleEntity}
             />
           )}
-        </main>
+          </main>
+        </div>
 
-        {/* Footer discret */}
-        <footer className="mt-12 border-t border-slate-200 bg-white px-8 py-4 text-xs text-slate-600 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            FIDE Chess Ledger — Bin Classé (#1 : {session.binId}) · Bin Amical (#2 :{' '}
-            {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID})
+        {/* Footer discret Obsidian */}
+        <footer className="mt-12 border-t border-[#1F2733] bg-[#0F131A] px-6 sm:px-8 py-4 text-xs text-[#6C788B] flex flex-wrap items-center justify-between gap-4">
+          <div className="font-mono">
+            FIDE Chess Ledger · Bin #1 : {session.binId} · Bin #2 :{' '}
+            {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID}
           </div>
           <div className="font-mono">
-            Cache local actif · Dernière synchro :{' '}
+            Synchro :{' '}
             {dbState.updatedAt
               ? new Date(dbState.updatedAt).toLocaleString('fr-FR')
               : '—'}

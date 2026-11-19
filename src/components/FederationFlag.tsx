@@ -30,9 +30,11 @@ export const FideFlagSVG: React.FC<{ className?: string; width?: number; height?
       width={width}
       height={height}
       className={`shrink-0 rounded-xs border border-blue-900/40 shadow-2xs ${className}`}
-      title="Fédération Internationale des Échecs (FIDE)"
+      aria-label="Fédération Internationale des Échecs (FIDE)"
+      role="img"
       xmlns="http://www.w3.org/2000/svg"
     >
+      <title>Fédération Internationale des Échecs (FIDE)</title>
       {/* Fond bleu officiel FIDE */}
       <rect width="48" height="32" fill="#002b7f" rx="1.5" />
 
@@ -109,7 +111,7 @@ export const FederationFlag: React.FC<FederationFlagProps> = ({
           height={dimensions.height}
           loading="lazy"
           onError={() => setImgError(true)}
-          className="shrink-0 rounded-xs object-cover border border-slate-300/80 shadow-2xs"
+          className="shrink-0 rounded-xs object-cover border border-[#2B3647] shadow-2xs"
           style={{ width: `${dimensions.width}px`, height: `${dimensions.height}px` }}
         />
       ) : (
@@ -123,14 +125,14 @@ export const FederationFlag: React.FC<FederationFlagProps> = ({
 
       {/* Code optionnel (ex: FRA, FIDE) */}
       {showCode && (
-        <span className={`font-mono font-bold uppercase text-slate-800 ${dimensions.text}`}>
+        <span className={`font-mono font-bold uppercase text-[#F1F4F8] ${dimensions.text}`}>
           {info.code}
         </span>
       )}
 
       {/* Nom complet optionnel (ex: France) */}
       {showName && (
-        <span className={`text-slate-700 font-medium ${dimensions.text}`}>
+        <span className={`text-[#9BA7B8] font-medium ${dimensions.text}`}>
           {info.name}
         </span>
       )}

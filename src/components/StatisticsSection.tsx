@@ -2,16 +2,24 @@ import React, { useMemo, useState } from 'react';
 import {
   Calculator,
   Calendar,
+  Check,
+  ChevronDown,
+  ChevronUp,
   Edit3,
+  Eye,
   Plus,
   Trash2,
   TrendingUp,
+  Trophy,
   UserCheck,
+  X,
 } from 'lucide-react';
 import {
   FideGame,
   MonthlyRatingRecord,
   PlayerProfile,
+  TimeControlCategory,
+  Tournament,
 } from '../types/fide';
 import {
   calculateFideEloChange,
@@ -19,12 +27,52 @@ import {
   calculateFidePerformanceRating,
   formatPeriodLabel,
 } from '../utils/fideMath';
-import { EloEvolutionChart } from './EloEvolutionChart';
+import { formatPlayerNameDisplay } from '../utils/fideValidation';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { EloEvolutionChart } from './EloEvolutionChart';
+import { FederationFlag } from './FederationFlag';
+import { IconButton } from './IconButton';
+
+function formatFideMatrixPeriod(period: string): string {
+  const [year, month] = period.split('-');
+  const shortMonths = [
+    'Jan',
+    'Fév',
+    'Mar',
+    'Avr',
+    'Mai',
+    'Juin',
+    'Juil',
+    'Août',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Déc',
+  ];
+  const mIdx = parseInt(month, 10) - 1;
+  if (year && mIdx >= 0 && mIdx < 12) {
+    return `${year}-${shortMonths[mIdx]}`;
+  }
+  return period;
+}
+
+interface MonthlyCadenceCell {
+  cadence: TimeControlCategory;
+  hasActivity: boolean;
+  delta: number;
+  games: FideGame[];
+  manualTournaments: Tournament[];
+  recordFallback?: {
+    gamesCount: number;
+    delta: number;
+    notes: string;
+  };
+}
 
 interface StatisticsSectionProps {
   records: MonthlyRatingRecord[];
   games: FideGame[];
+  tournaments?: Tournament[];
   profile: PlayerProfile;
   onSaveRatingRecord: (
     input: Omit<MonthlyRatingRecord, 'id' | 'ownerId'>,
@@ -37,6 +85,7 @@ interface StatisticsSectionProps {
 export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   records,
   games,
+  tournaments = [],
   profile,
   onSaveRatingRecord,
   onDeleteRatingRecord,
@@ -59,6 +108,13 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   const [simOppElo, setSimOppElo] = useState(1750);
   const [simKFactor, setSimKFactor] = useState<10 | 20 | 40>(profile.kFactor);
 
+  // Matrice des variations mensuelles (style FIDE)
+  const [showAllMonthlyPeriods, setShowAllMonthlyPeriods] = useState(false);
+  const [selectedVariationCell, setSelectedVariationCell] = useState<{
+    period: string;
+    cadence: TimeControlCategory;
+  } | null>(null);
+
   const sortedRatings = useMemo(
     () => [...records].sort((a, b) => b.period.localeCompare(a.period)),
     [records]
@@ -76,8 +132,24 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
       const winRate = count > 0 ? Math.round((wins / count) * 100) : 0;
       const drawRate = count > 0 ? Math.round((draws / count) * 100) : 0;
       const lossRate = count > 0 ? Math.max(0, 100 - winRate - drawRate) : 0;
-      const netElo =
-        Math.round(list.reduce((acc, g) => acc + g.eloChange, 0) * 10) / 10;
+
+      const manualTourneysForTc = tournaments.filter(
+        (t) =>
+          t.timeControl === tc &&
+          t.manualEloDelta !== undefined &&
+          t.manualEloDelta !== null &&
+          !Number.isNaN(Number(t.manualEloDelta))
+      );
+      const manualIds = new Set(manualTourneysForTc.map((t) => t.id));
+      const gamesNet = list
+        .filter((g) => !manualIds.has(g.tournamentId))
+        .reduce((acc, g) => acc + g.eloChange, 0);
+      const manualNet = manualTourneysForTc.reduce(
+        (acc, t) => acc + Number(t.manualEloDelta),
+        0
+      );
+      const netElo = Math.round((gamesNet + manualNet) * 10) / 10;
+
       const perf = calculateFidePerformanceRating(list);
       const avgOpp =
         count > 0
@@ -105,10 +177,8 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
     return [
       {
         label: 'Classique (Standard)',
-        accentTop: 'border-t-indigo-600',
-        bgSoft: 'bg-indigo-50/50',
-        badgeClass: 'bg-indigo-100 text-indigo-900',
-        eloColor: 'text-indigo-950',
+        accentText: 'text-emerald-400',
+        eloColor: 'text-emerald-400',
         ...computeFor(
           'Standard',
           latestRecord ? latestRecord.standardElo : profile.standardElo
@@ -116,10 +186,8 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
       },
       {
         label: 'Rapide',
-        accentTop: 'border-t-amber-500',
-        bgSoft: 'bg-amber-50/50',
-        badgeClass: 'bg-amber-100 text-amber-900',
-        eloColor: 'text-amber-950',
+        accentText: 'text-[#D4A853]',
+        eloColor: 'text-[#D4A853]',
         ...computeFor(
           'Rapid',
           latestRecord ? latestRecord.rapidElo : profile.rapidElo
@@ -127,17 +195,181 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
       },
       {
         label: 'Blitz',
-        accentTop: 'border-t-sky-500',
-        bgSoft: 'bg-sky-50/50',
-        badgeClass: 'bg-sky-100 text-sky-900',
-        eloColor: 'text-sky-950',
+        accentText: 'text-sky-400',
+        eloColor: 'text-sky-400',
         ...computeFor(
           'Blitz',
           latestRecord ? latestRecord.blitzElo : profile.blitzElo
         ),
       },
     ];
-  }, [games, sortedRatings, profile]);
+  }, [games, tournaments, sortedRatings, profile]);
+
+  // Tableau des variations d'Elo par mois et par cadence (Classique / Rapide / Blitz)
+  const monthlyVariations = useMemo(() => {
+    const periodSet = new Set<string>();
+    const isValidPeriod = (p: string | undefined): p is string =>
+      Boolean(p && /^\d{4}-\d{2}$/.test(p));
+
+    games.forEach((g) => {
+      const p = g.datePlayed?.slice(0, 7);
+      if (isValidPeriod(p)) periodSet.add(p);
+    });
+    tournaments.forEach((t) => {
+      if (
+        t.manualEloDelta !== undefined &&
+        t.manualEloDelta !== null &&
+        !Number.isNaN(Number(t.manualEloDelta))
+      ) {
+        const p = (t.endDate || t.startDate)?.slice(0, 7);
+        if (isValidPeriod(p)) periodSet.add(p);
+      }
+    });
+    records.forEach((r) => {
+      if (isValidPeriod(r.period)) periodSet.add(r.period);
+    });
+
+    const periods = Array.from(periodSet).sort((a, b) => b.localeCompare(a));
+    const ascRatings = [...records].sort((a, b) =>
+      a.period.localeCompare(b.period)
+    );
+    const manualTournamentIds = new Set(
+      tournaments
+        .filter(
+          (t) =>
+            t.manualEloDelta !== undefined &&
+            t.manualEloDelta !== null &&
+            !Number.isNaN(Number(t.manualEloDelta))
+        )
+        .map((t) => t.id)
+    );
+
+    const buildCell = (
+      period: string,
+      cadence: TimeControlCategory
+    ): MonthlyCadenceCell => {
+      const periodGames = games
+        .filter(
+          (g) => g.datePlayed.startsWith(period) && g.timeControl === cadence
+        )
+        .sort((a, b) => b.datePlayed.localeCompare(a.datePlayed));
+
+      const manualTourneys = tournaments.filter(
+        (t) =>
+          t.timeControl === cadence &&
+          (t.endDate || t.startDate).startsWith(period) &&
+          t.manualEloDelta !== undefined &&
+          t.manualEloDelta !== null &&
+          !Number.isNaN(Number(t.manualEloDelta))
+      );
+
+      if (periodGames.length > 0 || manualTourneys.length > 0) {
+        const gamesDelta = periodGames
+          .filter((g) => !manualTournamentIds.has(g.tournamentId))
+          .reduce((acc, g) => acc + g.eloChange, 0);
+        const manualDelta = manualTourneys.reduce(
+          (acc, t) => acc + Number(t.manualEloDelta),
+          0
+        );
+        const totalDelta = Math.round((gamesDelta + manualDelta) * 10) / 10;
+
+        return {
+          cadence,
+          hasActivity: true,
+          delta: totalDelta,
+          games: periodGames,
+          manualTournaments: manualTourneys,
+        };
+      }
+
+      const recIdx = ascRatings.findIndex((r) => r.period === period);
+      const rec = recIdx >= 0 ? ascRatings[recIdx] : undefined;
+      const prevRec = recIdx > 0 ? ascRatings[recIdx - 1] : undefined;
+
+      if (rec) {
+        if (
+          cadence === 'Standard' &&
+          (rec.standardDelta !== 0 || rec.standardGamesCount > 0)
+        ) {
+          return {
+            cadence,
+            hasActivity: true,
+            delta: Math.round(rec.standardDelta * 10) / 10,
+            games: [],
+            manualTournaments: [],
+            recordFallback: {
+              gamesCount: rec.standardGamesCount,
+              delta: rec.standardDelta,
+              notes: rec.notes,
+            },
+          };
+        }
+        if (cadence === 'Rapid' && prevRec) {
+          const diff = Math.round((rec.rapidElo - prevRec.rapidElo) * 10) / 10;
+          if (diff !== 0) {
+            return {
+              cadence,
+              hasActivity: true,
+              delta: diff,
+              games: [],
+              manualTournaments: [],
+              recordFallback: {
+                gamesCount: 0,
+                delta: diff,
+                notes: rec.notes || 'Écart mensuel Rapide (relevé FIDE)',
+              },
+            };
+          }
+        }
+        if (cadence === 'Blitz' && prevRec) {
+          const diff = Math.round((rec.blitzElo - prevRec.blitzElo) * 10) / 10;
+          if (diff !== 0) {
+            return {
+              cadence,
+              hasActivity: true,
+              delta: diff,
+              games: [],
+              manualTournaments: [],
+              recordFallback: {
+                gamesCount: 0,
+                delta: diff,
+                notes: rec.notes || 'Écart mensuel Blitz (relevé FIDE)',
+              },
+            };
+          }
+        }
+      }
+
+      return {
+        cadence,
+        hasActivity: false,
+        delta: 0,
+        games: [],
+        manualTournaments: [],
+      };
+    };
+
+    return periods.map((period) => ({
+      period,
+      label: formatFideMatrixPeriod(period),
+      Standard: buildCell(period, 'Standard'),
+      Rapid: buildCell(period, 'Rapid'),
+      Blitz: buildCell(period, 'Blitz'),
+    }));
+  }, [games, tournaments, records]);
+
+  const activeVariationDetail = useMemo(() => {
+    if (!selectedVariationCell) return null;
+    const row = monthlyVariations.find(
+      (r) => r.period === selectedVariationCell.period
+    );
+    if (!row) return null;
+    return {
+      period: row.period,
+      periodLabel: row.label,
+      cell: row[selectedVariationCell.cadence],
+    };
+  }, [selectedVariationCell, monthlyVariations]);
 
   // Statistiques par couleur (Blancs vs Noirs)
   const colorStats = useMemo(() => {
@@ -265,24 +497,25 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
   const simExpected = Math.round(calculateFideExpectedScore(simPlayerElo, simOppElo) * 100);
 
   return (
-    <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between gap-4 border-b border-[#232C3A] pb-4">
         <div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-indigo-950">
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[#F1F4F8]">
             Statistiques & Évolution Elo
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Visualisez l’évolution de votre Elo au fil des mois, vos classements dans toutes les cadences (Classique, Rapide, Blitz) et vos performances détaillées.
+          <p className="text-xs text-[#9BA7B8] mt-1">
+            Courbe mensuelle FIDE, performance par cadence, répertoire d’ouvertures et simulateur officiel.
           </p>
         </div>
-        <button
-          type="button"
+        <IconButton
+          label={`Modifier mes Elos actuels & Objectif (${profile.targetElo})`}
+          variant="surface"
+          size="md"
+          tooltipPos="bottom"
           onClick={onOpenProfileModal}
-          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-indigo-900 bg-indigo-50 border border-indigo-200 rounded-xl hover:bg-indigo-100 transition-colors self-start"
         >
-          <UserCheck className="w-4 h-4 text-indigo-600" />
-          Modifier mes Elos actuels & Objectif ({profile.targetElo})
-        </button>
+          <UserCheck className="w-4 h-4 text-emerald-400" />
+        </IconButton>
       </div>
 
       {/* 1. Classement et bilan dans chacune des 3 cadences */}
@@ -290,26 +523,23 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
         {cadenceStats.map((c) => (
           <div
             key={c.tc}
-            className={`bg-white border border-slate-200 border-t-4 ${c.accentTop} rounded-2xl p-5 shadow-sm space-y-4`}
+            className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4"
           >
             <div className="flex items-start justify-between">
               <div>
-                <div
-                  className={`inline-block text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-md ${c.badgeClass}`}
-                >
+                <div className={`text-[11px] font-mono font-bold uppercase tracking-wider ${c.accentText}`}>
                   {c.label}
                 </div>
-                <div className={`text-3xl font-mono font-extrabold mt-2 ${c.eloColor}`}>
-                  {c.currentElo} <span className="text-sm font-normal text-slate-500">Elo</span>
+                <div className={`text-3xl font-mono tabular-nums font-bold mt-1.5 ${c.eloColor}`}>
+                  {c.currentElo}{' '}
+                  <span className="text-xs font-normal text-[#6C788B]">Elo</span>
                 </div>
               </div>
-              <div className="text-right font-mono">
-                <div className="text-[11px] font-bold text-slate-500">Elo gagné (parties)</div>
+              <div className="text-right font-mono tabular-nums">
+                <div className="text-[11px] text-[#6C788B]">Bilan parties</div>
                 <div
-                  className={`text-sm font-extrabold px-2 py-0.5 rounded mt-0.5 inline-block ${
-                    c.netElo >= 0
-                      ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                      : 'bg-rose-50 text-rose-700 border border-rose-200'
+                  className={`text-sm font-bold mt-1 ${
+                    c.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
                   {c.netElo >= 0 ? `+${c.netElo.toFixed(1)}` : c.netElo.toFixed(1)} pts
@@ -317,42 +547,42 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-100 text-xs">
-              <div className={`p-2.5 rounded-xl ${c.bgSoft}`}>
-                <div className="text-slate-600 font-medium">Parties</div>
-                <div className="font-mono font-extrabold text-slate-900 mt-0.5">
-                  {c.count} jouées
+            <div className="grid grid-cols-3 gap-2 pt-3 border-t border-[#232C3A] text-xs">
+              <div className="p-2.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+                <div className="text-[#6C788B] text-[11px]">Parties</div>
+                <div className="font-mono tabular-nums font-bold text-[#F1F4F8] mt-0.5">
+                  {c.count}
                 </div>
               </div>
-              <div className={`p-2.5 rounded-xl ${c.bgSoft}`}>
-                <div className="text-slate-600 font-medium">Taux victoire</div>
-                <div className="font-mono font-extrabold text-emerald-700 mt-0.5">
+              <div className="p-2.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+                <div className="text-[#6C788B] text-[11px]">Victoires</div>
+                <div className="font-mono tabular-nums font-bold text-emerald-400 mt-0.5">
                   {c.winRate}%
                 </div>
               </div>
-              <div className={`p-2.5 rounded-xl ${c.bgSoft}`}>
-                <div className="text-slate-600 font-medium">Perf. FIDE</div>
-                <div className="font-mono font-extrabold text-violet-900 mt-0.5">
+              <div className="p-2.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+                <div className="text-[#6C788B] text-[11px]">Perf. FIDE</div>
+                <div className="font-mono tabular-nums font-bold text-[#D4A853] mt-0.5">
                   {c.perf || '—'}
                 </div>
               </div>
             </div>
 
             <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between text-xs font-mono">
-                <span className="text-emerald-700 font-bold">{c.wins} V</span>
-                <span className="text-amber-700 font-bold">{c.draws} N</span>
-                <span className="text-rose-700 font-bold">{c.losses} D</span>
-                <span className="text-slate-600">Moy. adv : {c.avgOpp || '—'}</span>
+              <div className="flex items-center justify-between text-xs font-mono tabular-nums">
+                <span className="text-emerald-400 font-bold">{c.wins}V</span>
+                <span className="text-[#D4A853] font-bold">{c.draws}N</span>
+                <span className="text-rose-400 font-bold">{c.losses}D</span>
+                <span className="text-[#9BA7B8]">Moy. adv : {c.avgOpp || '—'}</span>
               </div>
-              <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden flex">
+              <div className="w-full h-1.5 bg-[#19202B] rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${c.winRate}%` }}
                   className="bg-emerald-500 h-full"
                 />
                 <div
                   style={{ width: `${c.drawRate}%` }}
-                  className="bg-amber-400 h-full"
+                  className="bg-[#D4A853] h-full"
                 />
                 <div
                   style={{ width: `${c.lossRate}%` }}
@@ -365,19 +595,19 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
       </div>
 
       {/* 2. Graphique d'évolution mensuelle de l'Elo */}
-      <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-6 shadow-sm space-y-4">
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-6 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-indigo-600" />
-              Courbe d’évolution de mon Elo au fil des mois
+            <h2 className="font-display text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-emerald-400" />
+              Courbe d’évolution mensuelle FIDE
             </h2>
-            <p className="text-xs text-slate-600">
-              Publication mensuelle FIDE (1er du mois) en Classique, Rapide et Blitz.
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Publication mensuelle au 1er du mois en Classique, Rapide et Blitz.
             </p>
           </div>
-          <div className="text-xs font-mono font-bold px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800">
-            Objectif Elo visé : <strong>{profile.targetElo}</strong>
+          <div className="text-xs font-mono font-bold text-[#D4A853]">
+            Objectif : {profile.targetElo} Elo
           </div>
         </div>
 
@@ -387,55 +617,409 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
         />
       </div>
 
+      {/* 2b. Tableau des variations d'Elo par mois et par cadence (style FIDE) */}
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+        <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A] flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-display text-sm font-bold text-[#F1F4F8] flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-[#D4A853]" />
+              Variations d’Elo par mois & cadence
+            </h2>
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Bilan mensuel par cadence (Classique, Rapide, Blitz) — cliquez sur « Voir » pour consulter les parties.
+            </p>
+          </div>
+          <span className="text-[11px] font-mono text-[#6C788B]">
+            {monthlyVariations.length} période{monthlyVariations.length > 1 ? 's' : ''}
+          </span>
+        </div>
+
+        {monthlyVariations.length === 0 ? (
+          <div className="p-8 text-center text-xs text-[#6C788B]">
+            Aucune variation mensuelle enregistrée pour le moment.
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-[#232C3A] text-xs font-bold tracking-wide">
+                    <th className="py-3 px-5 bg-[#0F131A] text-[#9BA7B8] w-36">
+                      Période
+                    </th>
+                    <th className="py-3 px-5 bg-emerald-500/12 text-emerald-400 border-l border-[#232C3A] text-center">
+                      Classique
+                    </th>
+                    <th className="py-3 px-5 bg-[#D4A853]/12 text-[#D4A853] border-l border-[#232C3A] text-center">
+                      Rapide
+                    </th>
+                    <th className="py-3 px-5 bg-sky-500/12 text-sky-400 border-l border-[#232C3A] text-center">
+                      Blitz
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[#232C3A] text-xs">
+                  {(showAllMonthlyPeriods
+                    ? monthlyVariations
+                    : monthlyVariations.slice(0, 6)
+                  ).map((row) => (
+                    <tr
+                      key={row.period}
+                      className="hover:bg-[#19202B]/60 transition-colors"
+                    >
+                      <td className="py-3 px-5 font-mono tabular-nums font-bold text-[#F1F4F8] whitespace-nowrap">
+                        {row.label}
+                      </td>
+                      {(['Standard', 'Rapid', 'Blitz'] as TimeControlCategory[]).map(
+                        (cad) => {
+                          const cell = row[cad];
+                          const isSelected =
+                            selectedVariationCell?.period === row.period &&
+                            selectedVariationCell?.cadence === cad;
+
+                          return (
+                            <td
+                              key={cad}
+                              className="py-3 px-5 border-l border-[#232C3A]/70 whitespace-nowrap"
+                            >
+                              {!cell.hasActivity ? (
+                                <span className="text-[#6C788B]">
+                                  Aucune partie
+                                </span>
+                              ) : (
+                                <div className="flex items-center justify-between gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setSelectedVariationCell(
+                                        isSelected
+                                          ? null
+                                          : { period: row.period, cadence: cad }
+                                      )
+                                    }
+                                    className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
+                                      isSelected
+                                        ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                                        : 'bg-[#19202B] border-[#2B3647] text-[#F1F4F8] hover:border-[#475569]'
+                                    }`}
+                                  >
+                                    <Eye className="w-3.5 h-3.5 opacity-80" />
+                                    <span>Voir</span>
+                                  </button>
+
+                                  <span
+                                    className={`font-mono tabular-nums font-bold inline-flex items-center gap-1 ${
+                                      cell.delta > 0
+                                        ? 'text-emerald-400'
+                                        : cell.delta < 0
+                                        ? 'text-rose-400'
+                                        : 'text-[#9BA7B8]'
+                                    }`}
+                                  >
+                                    {cell.delta > 0 && (
+                                      <>
+                                        <span aria-hidden="true">▲</span>
+                                        <span>+{cell.delta.toFixed(1)}</span>
+                                      </>
+                                    )}
+                                    {cell.delta < 0 && (
+                                      <>
+                                        <span aria-hidden="true">▼</span>
+                                        <span>{cell.delta.toFixed(1)}</span>
+                                      </>
+                                    )}
+                                    {cell.delta === 0 && <span>0.0</span>}
+                                  </span>
+                                </div>
+                              )}
+                            </td>
+                          );
+                        }
+                      )}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Détail du mois + cadence sélectionné */}
+            {activeVariationDetail && (
+              <div className="border-t border-[#232C3A] bg-[#0F131A] p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-mono font-bold text-sm text-[#F1F4F8]">
+                      {activeVariationDetail.periodLabel}
+                    </span>
+                    <span className="text-[#475569]">·</span>
+                    <span
+                      className={`text-xs font-bold uppercase tracking-wider ${
+                        activeVariationDetail.cell.cadence === 'Standard'
+                          ? 'text-emerald-400'
+                          : activeVariationDetail.cell.cadence === 'Rapid'
+                          ? 'text-[#D4A853]'
+                          : 'text-sky-400'
+                      }`}
+                    >
+                      {activeVariationDetail.cell.cadence === 'Standard'
+                        ? 'Classique'
+                        : activeVariationDetail.cell.cadence === 'Rapid'
+                        ? 'Rapide'
+                        : 'Blitz'}
+                    </span>
+                    <span className="text-[#475569]">·</span>
+                    <span
+                      className={`font-mono tabular-nums text-xs font-bold ${
+                        activeVariationDetail.cell.delta > 0
+                          ? 'text-emerald-400'
+                          : activeVariationDetail.cell.delta < 0
+                          ? 'text-rose-400'
+                          : 'text-[#9BA7B8]'
+                      }`}
+                    >
+                      {activeVariationDetail.cell.delta > 0
+                        ? `▲ +${activeVariationDetail.cell.delta.toFixed(1)} pts`
+                        : activeVariationDetail.cell.delta < 0
+                        ? `▼ ${activeVariationDetail.cell.delta.toFixed(1)} pts`
+                        : '0.0 pt'}
+                    </span>
+                  </div>
+
+                  <IconButton
+                    label="Fermer le détail mensuel"
+                    variant="ghost"
+                    size="xs"
+                    onClick={() => setSelectedVariationCell(null)}
+                  >
+                    <X className="w-4 h-4" />
+                  </IconButton>
+                </div>
+
+                {activeVariationDetail.cell.manualTournaments.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#9BA7B8]">
+                      Tournois avec bilan Elo saisi manuellement
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {activeVariationDetail.cell.manualTournaments.map((t) => {
+                        const d = Number(t.manualEloDelta || 0);
+                        return (
+                          <div
+                            key={t.id}
+                            className="p-3 rounded-xl bg-[#19202B] border border-[#263142] flex items-center justify-between gap-3 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <div className="font-semibold text-[#F1F4F8] flex items-center gap-1.5 truncate">
+                                <Trophy className="w-3.5 h-3.5 text-[#D4A853] shrink-0" />
+                                <span className="truncate">{t.name}</span>
+                              </div>
+                              <div className="text-[11px] font-mono text-[#6C788B] mt-0.5">
+                                {t.startDate} → {t.endDate}
+                                {t.manualPerformance
+                                  ? ` · Perf ${t.manualPerformance}`
+                                  : ''}
+                              </div>
+                            </div>
+                            <span
+                              className={`font-mono tabular-nums font-bold shrink-0 ${
+                                d >= 0 ? 'text-emerald-400' : 'text-rose-400'
+                              }`}
+                            >
+                              {d >= 0 ? `+${d.toFixed(1)}` : d.toFixed(1)}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {activeVariationDetail.cell.games.length > 0 ? (
+                  <div className="overflow-x-auto border border-[#232C3A] rounded-xl bg-[#131820]">
+                    <table className="w-full text-left border-collapse">
+                      <thead>
+                        <tr className="border-b border-[#232C3A] bg-[#19202B]/70 text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
+                          <th className="py-2.5 px-4">Date</th>
+                          <th className="py-2.5 px-4">Tournoi</th>
+                          <th className="py-2.5 px-4">Adversaire</th>
+                          <th className="py-2.5 px-4 text-right">Son Elo</th>
+                          <th className="py-2.5 px-4 text-center">Score</th>
+                          <th className="py-2.5 px-4 text-right">Variation</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-[#232C3A] text-xs">
+                        {activeVariationDetail.cell.games.map((g) => (
+                          <tr key={g.id} className="hover:bg-[#19202B]">
+                            <td className="py-2.5 px-4 font-mono text-[#9BA7B8] whitespace-nowrap">
+                              {g.datePlayed}
+                            </td>
+                            <td className="py-2.5 px-4 text-[#CBD5E1] truncate max-w-[200px]">
+                              {g.tournamentName}
+                            </td>
+                            <td className="py-2.5 px-4 font-semibold text-[#F1F4F8]">
+                              <span className="inline-flex items-center gap-2">
+                                <FederationFlag
+                                  code={g.opponentFederation || 'FRA'}
+                                  size="xs"
+                                />
+                                {g.opponentTitle !== 'None' && (
+                                  <span className="font-mono text-[10px] text-[#D4A853]">
+                                    {g.opponentTitle}
+                                  </span>
+                                )}
+                                <span>
+                                  {formatPlayerNameDisplay(
+                                    g.opponentName,
+                                    g.opponentNameUncertain
+                                  )}
+                                </span>
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono tabular-nums text-[#F1F4F8]">
+                              {g.opponentEloUnknown || !g.opponentElo
+                                ? '?'
+                                : g.opponentElo}
+                            </td>
+                            <td className="py-2.5 px-4 text-center font-mono font-bold">
+                              <span
+                                className={
+                                  g.playerScore === 1
+                                    ? 'text-emerald-400'
+                                    : g.playerScore === 0
+                                    ? 'text-rose-400'
+                                    : 'text-[#D4A853]'
+                                }
+                              >
+                                {g.playerScore === 1
+                                  ? '1'
+                                  : g.playerScore === 0.5
+                                  ? '½'
+                                  : '0'}
+                              </span>
+                            </td>
+                            <td className="py-2.5 px-4 text-right font-mono tabular-nums font-bold">
+                              <span
+                                className={
+                                  g.eloChange >= 0
+                                    ? 'text-emerald-400'
+                                    : 'text-rose-400'
+                                }
+                              >
+                                {g.eloChange >= 0
+                                  ? `+${g.eloChange.toFixed(1)}`
+                                  : g.eloChange.toFixed(1)}
+                              </span>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  activeVariationDetail.cell.recordFallback && (
+                    <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#263142] text-xs text-[#CBD5E1] flex flex-wrap items-center justify-between gap-2">
+                      <span>
+                        Issue du relevé mensuel FIDE
+                        {activeVariationDetail.cell.recordFallback.gamesCount > 0
+                          ? ` (${activeVariationDetail.cell.recordFallback.gamesCount} parties)`
+                          : ''}
+                        {activeVariationDetail.cell.recordFallback.notes
+                          ? ` — ${activeVariationDetail.cell.recordFallback.notes}`
+                          : ''}
+                      </span>
+                      <span
+                        className={`font-mono font-bold ${
+                          activeVariationDetail.cell.recordFallback.delta >= 0
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
+                        }`}
+                      >
+                        {activeVariationDetail.cell.recordFallback.delta >= 0
+                          ? `+${activeVariationDetail.cell.recordFallback.delta.toFixed(1)}`
+                          : activeVariationDetail.cell.recordFallback.delta.toFixed(1)}{' '}
+                        pts
+                      </span>
+                    </div>
+                  )
+                )}
+              </div>
+            )}
+
+            {monthlyVariations.length > 6 && (
+              <div className="px-5 py-3 border-t border-[#232C3A] bg-[#0F131A]">
+                <button
+                  type="button"
+                  onClick={() => setShowAllMonthlyPeriods((prev) => !prev)}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#19202B] border border-[#2B3647] text-xs font-semibold text-[#CBD5E1] hover:text-[#F1F4F8] hover:border-[#475569] transition-colors cursor-pointer"
+                >
+                  {showAllMonthlyPeriods ? (
+                    <>
+                      <ChevronUp className="w-3.5 h-3.5" />
+                      <span>Réduire les périodes</span>
+                    </>
+                  ) : (
+                    <>
+                      <ChevronDown className="w-3.5 h-3.5" />
+                      <span>
+                        Voir plus de périodes ({monthlyVariations.length - 6} de plus)
+                      </span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
       {/* 3. Bilan Blancs vs Noirs + Simulateur FIDE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <div className="lg:col-span-6 bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-6 shadow-sm space-y-4">
-          <h3 className="text-base font-extrabold text-indigo-950">
-            Performance par Couleur (Blancs vs Noirs)
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div className="lg:col-span-6 bg-[#131820] border border-[#232C3A] rounded-2xl p-6 space-y-4">
+          <h3 className="font-display text-base font-bold text-[#F1F4F8]">
+            Performance par Couleur
           </h3>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-2 text-sm font-extrabold text-slate-900">
-                  <span className="w-3.5 h-3.5 rounded-sm bg-white border border-slate-400 shadow-2xs" />
+                <span className="inline-flex items-center gap-2 text-xs font-bold text-[#F1F4F8]">
+                  <span className="w-3.5 h-3.5 rounded-sm bg-[#F1F4F8] border border-[#9BA7B8]" />
                   Avec les Blancs
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-600">
-                  {colorStats.white.count} parties
+                <span className="text-xs font-mono text-[#9BA7B8]">
+                  {colorStats.white.count} p.
                 </span>
               </div>
-              <div className="text-2xl font-mono font-extrabold text-slate-900">
+              <div className="text-2xl font-mono tabular-nums font-bold text-[#F1F4F8]">
                 {colorStats.white.score} / {colorStats.white.count} pts
               </div>
-              <div className="text-xs font-mono space-x-2">
-                <span className="text-emerald-700 font-bold">
+              <div className="text-xs font-mono tabular-nums space-x-2">
+                <span className="text-emerald-400 font-bold">
                   {colorStats.white.wins}V ({colorStats.white.winRate}%)
                 </span>
-                <span className="text-amber-700 font-bold">{colorStats.white.draws}N</span>
-                <span className="text-rose-700 font-bold">{colorStats.white.losses}D</span>
+                <span className="text-[#D4A853] font-bold">{colorStats.white.draws}N</span>
+                <span className="text-rose-400 font-bold">{colorStats.white.losses}D</span>
               </div>
-              <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden flex">
+              <div className="w-full h-1.5 bg-[#131820] rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${colorStats.white.winRate}%` }}
                   className="bg-emerald-500 h-full"
                 />
                 <div
                   style={{ width: `${colorStats.white.drawRate}%` }}
-                  className="bg-amber-400 h-full"
+                  className="bg-[#D4A853] h-full"
                 />
                 <div
                   style={{ width: `${colorStats.white.lossRate}%` }}
                   className="bg-rose-500 h-full"
                 />
               </div>
-              <div className="pt-2 border-t border-slate-200 flex justify-between text-xs font-mono">
-                <span className="text-slate-600">
-                  Perf : <strong className="text-violet-900">{colorStats.white.perf || '—'}</strong>
+              <div className="pt-2 border-t border-[#232C3A] flex justify-between text-xs font-mono tabular-nums">
+                <span className="text-[#9BA7B8]">
+                  Perf : <strong className="text-[#D4A853]">{colorStats.white.perf || '—'}</strong>
                 </span>
                 <span
                   className={`font-bold ${
-                    colorStats.white.netElo >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    colorStats.white.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
                   {colorStats.white.netElo >= 0
@@ -446,47 +1030,47 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
               </div>
             </div>
 
-            <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-2.5">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="inline-flex items-center gap-2 text-sm font-extrabold text-slate-900">
-                  <span className="w-3.5 h-3.5 rounded-sm bg-slate-900 border border-slate-900" />
+                <span className="inline-flex items-center gap-2 text-xs font-bold text-[#F1F4F8]">
+                  <span className="w-3.5 h-3.5 rounded-sm bg-[#0B0E12] border border-[#475569]" />
                   Avec les Noirs
                 </span>
-                <span className="text-xs font-mono font-bold text-slate-600">
-                  {colorStats.black.count} parties
+                <span className="text-xs font-mono text-[#9BA7B8]">
+                  {colorStats.black.count} p.
                 </span>
               </div>
-              <div className="text-2xl font-mono font-extrabold text-slate-900">
+              <div className="text-2xl font-mono tabular-nums font-bold text-[#F1F4F8]">
                 {colorStats.black.score} / {colorStats.black.count} pts
               </div>
-              <div className="text-xs font-mono space-x-2">
-                <span className="text-emerald-700 font-bold">
+              <div className="text-xs font-mono tabular-nums space-x-2">
+                <span className="text-emerald-400 font-bold">
                   {colorStats.black.wins}V ({colorStats.black.winRate}%)
                 </span>
-                <span className="text-amber-700 font-bold">{colorStats.black.draws}N</span>
-                <span className="text-rose-700 font-bold">{colorStats.black.losses}D</span>
+                <span className="text-[#D4A853] font-bold">{colorStats.black.draws}N</span>
+                <span className="text-rose-400 font-bold">{colorStats.black.losses}D</span>
               </div>
-              <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden flex">
+              <div className="w-full h-1.5 bg-[#131820] rounded-full overflow-hidden flex">
                 <div
                   style={{ width: `${colorStats.black.winRate}%` }}
                   className="bg-emerald-500 h-full"
                 />
                 <div
                   style={{ width: `${colorStats.black.drawRate}%` }}
-                  className="bg-amber-400 h-full"
+                  className="bg-[#D4A853] h-full"
                 />
                 <div
                   style={{ width: `${colorStats.black.lossRate}%` }}
                   className="bg-rose-500 h-full"
                 />
               </div>
-              <div className="pt-2 border-t border-slate-200 flex justify-between text-xs font-mono">
-                <span className="text-slate-600">
-                  Perf : <strong className="text-violet-900">{colorStats.black.perf || '—'}</strong>
+              <div className="pt-2 border-t border-[#232C3A] flex justify-between text-xs font-mono tabular-nums">
+                <span className="text-[#9BA7B8]">
+                  Perf : <strong className="text-[#D4A853]">{colorStats.black.perf || '—'}</strong>
                 </span>
                 <span
                   className={`font-bold ${
-                    colorStats.black.netElo >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                    colorStats.black.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
                   {colorStats.black.netElo >= 0
@@ -500,42 +1084,42 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
         </div>
 
         {/* Simulateur Elo Officiel FIDE */}
-        <div className="lg:col-span-6 bg-white border border-slate-200 border-t-4 border-t-violet-600 rounded-2xl p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-extrabold text-indigo-950 flex items-center gap-2">
-              <Calculator className="w-4 h-4 text-violet-600" />
-              Calculateur & Simulateur FIDE d’une ronde
+        <div className="lg:col-span-6 bg-[#131820] border border-[#232C3A] rounded-2xl p-6 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="font-display text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <Calculator className="w-4 h-4 text-[#D4A853]" />
+              Simulateur FIDE d’une ronde
             </h3>
-            <span className="text-xs font-mono font-bold px-2.5 py-1 rounded-md bg-violet-50 text-violet-800 border border-violet-200">
+            <span className="text-xs font-mono font-bold text-[#D4A853]">
               Score espéré : {simExpected}%
             </span>
           </div>
 
           <div className="grid grid-cols-3 gap-3 text-xs">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Mon Elo</label>
+              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Mon Elo</label>
               <input
                 type="number"
                 value={simPlayerElo}
                 onChange={(e) => setSimPlayerElo(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold focus:outline-none focus:border-indigo-600"
+                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono font-bold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Elo Adversaire</label>
+              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Adversaire</label>
               <input
                 type="number"
                 value={simOppElo}
                 onChange={(e) => setSimOppElo(Number(e.target.value))}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold focus:outline-none focus:border-indigo-600"
+                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono font-bold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Facteur K</label>
+              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Facteur K</label>
               <select
                 value={simKFactor}
                 onChange={(e) => setSimKFactor(Number(e.target.value) as 10 | 20 | 40)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono font-bold bg-white focus:outline-none focus:border-indigo-600"
+                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono font-bold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               >
                 <option value={40}>K = 40</option>
                 <option value={20}>K = 20</option>
@@ -545,22 +1129,22 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
           </div>
 
           <div className="grid grid-cols-3 gap-3 pt-1">
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-center">
-              <div className="text-xs font-extrabold text-emerald-900">En cas de Victoire</div>
-              <div className="text-lg font-mono font-extrabold text-emerald-700 mt-0.5">
-                +{simWinDelta.toFixed(1)} pts
+            <div className="p-3.5 bg-[#19202B] border border-emerald-500/30 rounded-xl text-center">
+              <div className="text-[11px] font-semibold text-[#9BA7B8]">Victoire</div>
+              <div className="text-lg font-mono tabular-nums font-bold text-emerald-400 mt-0.5">
+                +{simWinDelta.toFixed(1)}
               </div>
             </div>
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-center">
-              <div className="text-xs font-extrabold text-amber-900">En cas de Nulle</div>
-              <div className="text-lg font-mono font-extrabold text-amber-800 mt-0.5">
-                {simDrawDelta >= 0 ? `+${simDrawDelta.toFixed(1)}` : simDrawDelta.toFixed(1)} pts
+            <div className="p-3.5 bg-[#19202B] border border-[#D4A853]/30 rounded-xl text-center">
+              <div className="text-[11px] font-semibold text-[#9BA7B8]">Nulle</div>
+              <div className="text-lg font-mono tabular-nums font-bold text-[#D4A853] mt-0.5">
+                {simDrawDelta >= 0 ? `+${simDrawDelta.toFixed(1)}` : simDrawDelta.toFixed(1)}
               </div>
             </div>
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-center">
-              <div className="text-xs font-extrabold text-rose-900">En cas de Défaite</div>
-              <div className="text-lg font-mono font-extrabold text-rose-700 mt-0.5">
-                {simLossDelta.toFixed(1)} pts
+            <div className="p-3.5 bg-[#19202B] border border-rose-500/30 rounded-xl text-center">
+              <div className="text-[11px] font-semibold text-[#9BA7B8]">Défaite</div>
+              <div className="text-lg font-mono tabular-nums font-bold text-rose-400 mt-0.5">
+                {simLossDelta.toFixed(1)}
               </div>
             </div>
           </div>
@@ -569,51 +1153,53 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
 
       {/* 4. Statistiques par Ouverture */}
       {openingStats.length > 0 && (
-        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-indigo-100 bg-indigo-50/40">
-            <h3 className="text-base font-extrabold text-indigo-950">
-              Mes Ouvertures les plus jouées
+        <div className="bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A]">
+            <h3 className="font-display text-sm font-bold text-[#F1F4F8]">
+              Ouvertures les plus jouées ({openingStats.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-extrabold text-indigo-950">
-                  <th className="py-3 px-4">Code ECO</th>
+                <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
+                  <th className="py-3 px-4">ECO</th>
                   <th className="py-3 px-4">Ouverture</th>
                   <th className="py-3 px-4 text-center">Parties</th>
                   <th className="py-3 px-4 text-center">Bilan (V / N / D)</th>
                   <th className="py-3 px-4 text-right">Elo Gagné</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
+              <tbody className="divide-y divide-[#232C3A] text-xs">
                 {openingStats.map((op) => {
                   const wPct = op.count > 0 ? Math.round((op.wins / op.count) * 100) : 0;
                   const dPct = op.count > 0 ? Math.round((op.draws / op.count) * 100) : 0;
                   const lPct = op.count > 0 ? Math.max(0, 100 - wPct - dPct) : 0;
                   return (
-                    <tr key={`${op.eco}_${op.name}`} className="hover:bg-slate-50">
-                      <td className="py-3 px-4 font-mono text-xs font-extrabold text-indigo-700">
+                    <tr key={`${op.eco}_${op.name}`} className="hover:bg-[#19202B]">
+                      <td className="py-3 px-4 font-mono font-bold text-[#D4A853]">
                         {op.eco}
                       </td>
-                      <td className="py-3 px-4 font-bold text-slate-900">{op.name}</td>
-                      <td className="py-3 px-4 text-center font-mono font-bold">{op.count}</td>
-                      <td className="py-3 px-4 text-center font-mono text-xs">
+                      <td className="py-3 px-4 font-semibold text-[#F1F4F8]">{op.name}</td>
+                      <td className="py-3 px-4 text-center font-mono tabular-nums font-bold text-[#F1F4F8]">
+                        {op.count}
+                      </td>
+                      <td className="py-3 px-4 text-center font-mono tabular-nums">
                         <div>
-                          <span className="text-emerald-700 font-bold">{op.wins}V</span> ·{' '}
-                          <span className="text-amber-700 font-bold">{op.draws}N</span> ·{' '}
-                          <span className="text-rose-700 font-bold">{op.losses}D</span>
+                          <span className="text-emerald-400 font-bold">{op.wins}V</span> ·{' '}
+                          <span className="text-[#D4A853] font-bold">{op.draws}N</span> ·{' '}
+                          <span className="text-rose-400 font-bold">{op.losses}D</span>
                         </div>
-                        <div className="w-28 mx-auto h-1.5 bg-slate-100 rounded-full overflow-hidden flex mt-1">
+                        <div className="w-28 mx-auto h-1.5 bg-[#19202B] rounded-full overflow-hidden flex mt-1">
                           <div style={{ width: `${wPct}%` }} className="bg-emerald-500 h-full" />
-                          <div style={{ width: `${dPct}%` }} className="bg-amber-400 h-full" />
+                          <div style={{ width: `${dPct}%` }} className="bg-[#D4A853] h-full" />
                           <div style={{ width: `${lPct}%` }} className="bg-rose-500 h-full" />
                         </div>
                       </td>
-                      <td className="py-3 px-4 text-right font-mono font-extrabold">
+                      <td className="py-3 px-4 text-right font-mono tabular-nums font-bold">
                         <span
                           className={
-                            op.netElo >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                            op.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
                           }
                         >
                           {op.netElo >= 0 ? `+${op.netElo.toFixed(1)}` : op.netElo.toFixed(1)}
@@ -629,76 +1215,77 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
       )}
 
       {/* 5. Historique et ajout des relevés mensuels officiels FIDE */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        <div className="lg:col-span-4 bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-5 shadow-sm space-y-4">
-          <div className="flex items-center justify-between gap-2">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <div className="lg:col-span-4 bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4">
+          <div className="flex items-center justify-between gap-2 border-b border-[#232C3A] pb-3">
             <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-indigo-600" />
-              <h3 className="text-sm font-extrabold text-indigo-950">
+              <Calendar className="w-4 h-4 text-emerald-400" />
+              <h3 className="font-display text-sm font-bold text-[#F1F4F8]">
                 {editingRecordId
                   ? 'Modifier le relevé mensuel'
-                  : 'Enregistrer un relevé mensuel FIDE'}
+                  : 'Ajouter un relevé mensuel'}
               </h3>
             </div>
             {editingRecordId && (
-              <button
-                type="button"
+              <IconButton
+                label="Annuler la modification"
+                variant="ghost"
+                size="xs"
                 onClick={handleResetForm}
-                className="text-xs font-bold text-slate-500 hover:text-slate-800"
               >
-                Annuler
-              </button>
+                <X className="w-3.5 h-3.5" />
+              </IconButton>
             )}
           </div>
 
           <form onSubmit={handleAddRecord} className="space-y-3 text-xs">
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Mois (YYYY-MM)</label>
+              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Mois (YYYY-MM)</label>
               <input
                 type="month"
                 required
                 value={period}
                 onChange={(e) => setPeriod(e.target.value)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono focus:outline-none focus:border-indigo-600"
+                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <div className="grid grid-cols-3 gap-2">
-              <div className="p-2 bg-indigo-50/50 border border-indigo-200 rounded-xl">
-                <label className="block font-extrabold text-indigo-950 mb-1">Classique</label>
+              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
+                <label className="block font-semibold text-emerald-400 mb-1">Classique</label>
                 <input
                   type="number"
                   required
                   value={standardElo}
                   onChange={(e) => setStandardElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-white border border-indigo-200 rounded-lg font-mono font-bold text-indigo-950"
+                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
                 />
               </div>
-              <div className="p-2 bg-amber-50/50 border border-amber-200 rounded-xl">
-                <label className="block font-extrabold text-amber-950 mb-1">Rapide</label>
+              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
+                <label className="block font-semibold text-[#D4A853] mb-1">Rapide</label>
                 <input
                   type="number"
                   required
                   value={rapidElo}
                   onChange={(e) => setRapidElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-white border border-amber-200 rounded-lg font-mono font-bold text-amber-950"
+                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
                 />
               </div>
-              <div className="p-2 bg-sky-50/50 border border-sky-200 rounded-xl">
-                <label className="block font-extrabold text-sky-950 mb-1">Blitz</label>
+              <div className="p-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
+                <label className="block font-semibold text-sky-400 mb-1">Blitz</label>
                 <input
                   type="number"
                   required
                   value={blitzElo}
                   onChange={(e) => setBlitzElo(Number(e.target.value))}
-                  className="w-full px-2 py-1.5 bg-white border border-sky-200 rounded-lg font-mono font-bold text-sky-950"
+                  className="w-full px-2 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-mono font-bold text-[#F1F4F8]"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Parties du mois
                 </label>
                 <input
@@ -706,88 +1293,93 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                   min={0}
                   value={standardGamesCount}
                   onChange={(e) => setStandardGamesCount(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                  className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8]"
                 />
               </div>
               <div>
-                <label className="block font-bold text-slate-700 mb-1">
-                  Variation Elo (+/-)
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
+                  Variation Elo
                 </label>
                 <input
                   type="number"
                   step="0.1"
                   value={standardDelta}
                   onChange={(e) => setStandardDelta(Number(e.target.value))}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono"
+                  className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-[#F1F4F8]"
                 />
               </div>
             </div>
 
             <div>
-              <label className="block font-bold text-slate-700 mb-1">Note</label>
+              <label className="block font-semibold text-[#CBD5E1] mb-1.5">Note</label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Ex: Liste FIDE Novembre"
-                className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                className="w-full px-3 py-2 bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8] placeholder:text-[#6C788B]"
               />
             </div>
 
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="w-full inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs font-bold text-white bg-indigo-600 rounded-xl hover:bg-indigo-700 shadow-sm"
-            >
-              <Plus className="w-4 h-4" />
-              {isSaving
-                ? 'Enregistrement...'
-                : editingRecordId
-                ? 'Mettre à jour ce mois'
-                : 'Enregistrer le mois'}
-            </button>
+            <div className="flex justify-end pt-1">
+              <IconButton
+                type="submit"
+                label={
+                  isSaving
+                    ? 'Enregistrement...'
+                    : editingRecordId
+                    ? 'Mettre à jour ce relevé'
+                    : 'Enregistrer ce relevé mensuel'
+                }
+                variant="primary"
+                size="md"
+                disabled={isSaving}
+              >
+                {editingRecordId ? <Check className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+              </IconButton>
+            </div>
           </form>
         </div>
 
-        <div className="lg:col-span-8 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-indigo-100 bg-indigo-50/40">
-            <h3 className="text-sm font-extrabold text-indigo-950">
-              Historique de mes publications mensuelles FIDE ({sortedRatings.length} mois)
+        <div className="lg:col-span-8 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+          <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A]">
+            <h3 className="font-display text-sm font-bold text-[#F1F4F8]">
+              Historique des publications mensuelles ({sortedRatings.length})
             </h3>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-indigo-100 bg-indigo-50/60 text-xs font-extrabold text-indigo-950">
+                <tr className="border-b border-[#232C3A] bg-[#0F131A] text-[11px] font-mono uppercase tracking-wider text-[#6C788B]">
                   <th className="py-3 px-4">Mois</th>
-                  <th className="py-3 px-4 text-right text-indigo-900">Classique</th>
-                  <th className="py-3 px-4 text-right text-amber-800">Rapide</th>
-                  <th className="py-3 px-4 text-right text-sky-800">Blitz</th>
+                  <th className="py-3 px-4 text-right text-emerald-400">Classique</th>
+                  <th className="py-3 px-4 text-right text-[#D4A853]">Rapide</th>
+                  <th className="py-3 px-4 text-right text-sky-400">Blitz</th>
                   <th className="py-3 px-4 text-right">Variation</th>
                   <th className="py-3 px-4 text-center">Parties</th>
                   <th className="py-3 px-4">Notes</th>
-                  <th className="py-3 px-4 text-right">Action</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-xs">
+              <tbody className="divide-y divide-[#232C3A] text-xs">
                 {sortedRatings.map((r) => (
-                  <tr key={r.id} className="hover:bg-slate-50">
-                    <td className="py-3 px-4 font-bold text-slate-900">
+                  <tr key={r.id} className="hover:bg-[#19202B]">
+                    <td className="py-3 px-4 font-semibold text-[#F1F4F8]">
                       {formatPeriodLabel(r.period)}
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-extrabold text-indigo-950 bg-indigo-50/25">
+                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-emerald-400">
                       {r.standardElo}
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-amber-900 bg-amber-50/25">
+                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-[#D4A853]">
                       {r.rapidElo}
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold text-sky-900 bg-sky-50/25">
+                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold text-sky-400">
                       {r.blitzElo}
                     </td>
-                    <td className="py-3 px-4 text-right font-mono font-bold">
+                    <td className="py-3 px-4 text-right font-mono tabular-nums font-bold">
                       <span
                         className={
-                          r.standardDelta >= 0 ? 'text-emerald-700' : 'text-rose-700'
+                          r.standardDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'
                         }
                       >
                         {r.standardDelta >= 0
@@ -795,28 +1387,28 @@ export const StatisticsSection: React.FC<StatisticsSectionProps> = ({
                           : r.standardDelta}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-center font-mono">
+                    <td className="py-3 px-4 text-center font-mono tabular-nums text-[#CBD5E1]">
                       {r.standardGamesCount}
                     </td>
-                    <td className="py-3 px-4 text-slate-600">{r.notes || '—'}</td>
+                    <td className="py-3 px-4 text-[#9BA7B8]">{r.notes || '—'}</td>
                     <td className="py-3 px-4 text-right whitespace-nowrap">
                       <div className="inline-flex items-center gap-1">
-                        <button
-                          type="button"
+                        <IconButton
+                          label="Modifier ce relevé"
+                          variant="ghost"
+                          size="xs"
                           onClick={() => handleEditRecord(r)}
-                          className="p-1 text-slate-400 hover:text-indigo-700 rounded hover:bg-indigo-50"
-                          title="Modifier ce relevé"
                         >
                           <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
+                        </IconButton>
+                        <IconButton
+                          label="Supprimer ce relevé"
+                          variant="danger"
+                          size="xs"
                           onClick={() => setRecordToDelete(r)}
-                          className="p-1 text-slate-400 hover:text-rose-700 rounded hover:bg-rose-50"
-                          title="Supprimer ce relevé"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        </IconButton>
                       </div>
                     </td>
                   </tr>

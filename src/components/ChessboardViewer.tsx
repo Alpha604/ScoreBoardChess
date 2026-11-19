@@ -7,6 +7,8 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+import { IconButton } from './IconButton';
+
 type PieceType = 'P' | 'N' | 'B' | 'R' | 'Q' | 'K';
 type PieceColor = 'w' | 'b';
 
@@ -168,7 +170,6 @@ function applySanMove(board: BoardState, sanRaw: string, turn: PieceColor): Boar
       if (disambigRow !== null && r !== disambigRow) continue;
 
       if (canPieceReach(next, r, c, toR, toC, p, isCapture)) {
-        // Handle en-passant capture if pawn moves diagonally to empty square
         if (pieceType === 'P' && isCapture && !next[toR][toC]) {
           next[r][toC] = null;
         }
@@ -253,24 +254,24 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between text-xs text-slate-600">
+      <div className="flex items-center justify-between text-xs text-[#9BA7B8]">
         <span className="font-mono tabular-nums">
           Coup {Math.ceil(step / 2)} / {Math.ceil(moves.length / 2)}{' '}
           {step > 0 && moves[step - 1] ? `(${step % 2 === 1 ? 'Blancs' : 'Noirs'} : ${moves[step - 1]})` : '(Position initiale)'}
         </span>
-        <button
-          type="button"
+        <IconButton
+          label={`Vue ${flipped ? 'Blancs' : 'Noirs'}`}
+          variant="surface"
+          size="xs"
           onClick={() => setFlipped((f) => !f)}
-          className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 hover:bg-slate-200 rounded transition-colors whitespace-nowrap"
         >
           <RotateCcw className="w-3.5 h-3.5" />
-          Vue {flipped ? 'Noirs' : 'Blancs'}
-        </button>
+        </IconButton>
       </div>
 
       {/* 8x8 Board */}
       <div
-        className={`grid grid-cols-8 border border-slate-300 rounded overflow-hidden select-none ${
+        className={`grid grid-cols-8 border border-[#2B3647] rounded-xl overflow-hidden select-none ${
           compact ? 'w-56 h-56' : 'w-full max-w-[320px] aspect-square mx-auto'
         }`}
       >
@@ -285,13 +286,13 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
               <div
                 key={`${r}-${c}`}
                 className={`relative flex items-center justify-center ${
-                  isLight ? 'bg-[#ebe7df]' : 'bg-[#8c7a6b]'
+                  isLight ? 'bg-[#D6D9DF]' : 'bg-[#4B5B6E]'
                 }`}
               >
                 {cIdx === 0 && (
                   <span
                     className={`absolute top-0.5 left-1 text-[9px] font-mono leading-none ${
-                      isLight ? 'text-[#8c7a6b]' : 'text-[#ebe7df]'
+                      isLight ? 'text-[#4B5B6E]' : 'text-[#D6D9DF]'
                     }`}
                   >
                     {rankLabel}
@@ -300,7 +301,7 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
                 {rIdx === 7 && (
                   <span
                     className={`absolute bottom-0.5 right-1 text-[9px] font-mono leading-none ${
-                      isLight ? 'text-[#8c7a6b]' : 'text-[#ebe7df]'
+                      isLight ? 'text-[#4B5B6E]' : 'text-[#D6D9DF]'
                     }`}
                   >
                     {fileLabel}
@@ -310,8 +311,8 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
                   <span
                     className={`text-2xl sm:text-3xl leading-none ${
                       piece.color === 'w'
-                        ? 'text-white drop-shadow-[0_1px_2px_rgba(15,23,42,0.85)]'
-                        : 'text-slate-950 drop-shadow-[0_1px_1px_rgba(255,255,255,0.4)]'
+                        ? 'text-white drop-shadow-[0_1px_2px_rgba(11,14,18,0.9)]'
+                        : 'text-[#0B0E12] drop-shadow-[0_1px_1px_rgba(255,255,255,0.3)]'
                     }`}
                   >
                     {PIECE_UNICODE[`${piece.color}${piece.type}`]}
@@ -327,59 +328,59 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
       {moves.length > 0 && (
         <>
           <div className="flex items-center justify-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setStep(0)}
+            <IconButton
+              label="Début de partie"
+              variant="surface"
+              size="xs"
               disabled={step === 0}
-              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition-colors"
-              title="Début de partie"
+              onClick={() => setStep(0)}
             >
               <ChevronFirst className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
+            </IconButton>
+            <IconButton
+              label="Coup précédent"
+              variant="surface"
+              size="xs"
               disabled={step === 0}
-              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition-colors"
-              title="Coup précédent"
+              onClick={() => setStep((s) => Math.max(0, s - 1))}
             >
               <ChevronLeft className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep((s) => Math.min(moves.length, s + 1))}
+            </IconButton>
+            <IconButton
+              label="Coup suivant"
+              variant="surface"
+              size="xs"
               disabled={step >= moves.length}
-              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition-colors"
-              title="Coup suivant"
+              onClick={() => setStep((s) => Math.min(moves.length, s + 1))}
             >
               <ChevronRight className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setStep(moves.length)}
+            </IconButton>
+            <IconButton
+              label="Fin de partie"
+              variant="surface"
+              size="xs"
               disabled={step >= moves.length}
-              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition-colors"
-              title="Fin de partie"
+              onClick={() => setStep(moves.length)}
             >
               <ChevronLast className="w-4 h-4" />
-            </button>
+            </IconButton>
           </div>
 
           {/* Interactive Move List */}
-          <div className="max-h-28 overflow-y-auto border border-slate-200 rounded p-2.5 bg-slate-50 font-mono text-xs leading-relaxed">
+          <div className="max-h-28 overflow-y-auto border border-[#232C3A] rounded-xl p-2.5 bg-[#19202B] font-mono text-xs leading-relaxed">
             {Array.from({ length: Math.ceil(moves.length / 2) }).map((_, pairIdx) => {
               const wIdx = pairIdx * 2;
               const bIdx = pairIdx * 2 + 1;
               return (
                 <span key={pairIdx} className="inline-block mr-3 mb-1">
-                  <span className="text-slate-400 mr-1">{pairIdx + 1}.</span>
+                  <span className="text-[#6C788B] mr-1">{pairIdx + 1}.</span>
                   <button
                     type="button"
                     onClick={() => setStep(wIdx + 1)}
-                    className={`px-1 rounded transition-colors ${
+                    className={`px-1 rounded transition-colors cursor-pointer ${
                       step === wIdx + 1
-                        ? 'bg-slate-900 text-white font-semibold'
-                        : 'text-slate-800 hover:bg-slate-200'
+                        ? 'bg-emerald-500/20 text-emerald-300 font-semibold'
+                        : 'text-[#F1F4F8] hover:bg-[#212A38]'
                     }`}
                   >
                     {moves[wIdx]}
@@ -388,10 +389,10 @@ export const ChessboardViewer: React.FC<ChessboardViewerProps> = ({
                     <button
                       type="button"
                       onClick={() => setStep(bIdx + 1)}
-                      className={`ml-1 px-1 rounded transition-colors ${
+                      className={`ml-1 px-1 rounded transition-colors cursor-pointer ${
                         step === bIdx + 1
-                          ? 'bg-slate-900 text-white font-semibold'
-                          : 'text-slate-800 hover:bg-slate-200'
+                          ? 'bg-emerald-500/20 text-emerald-300 font-semibold'
+                          : 'text-[#F1F4F8] hover:bg-[#212A38]'
                       }`}
                     >
                       {moves[bIdx]}

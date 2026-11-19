@@ -2,20 +2,26 @@ import React, { useMemo, useState } from 'react';
 import {
   AlertTriangle,
   ArchiveRestore,
+  Check,
   CheckCircle2,
   Clock,
   Coffee,
   Database,
   Download,
+  Eye,
+  EyeOff,
   HardDrive,
   KeyRound,
   RefreshCw,
   RotateCcw,
   Save,
   ShieldCheck,
+  Swords,
   Trash2,
   Trophy,
   UploadCloud,
+  Users,
+  X,
 } from 'lucide-react';
 import {
   BinSyncStatus,
@@ -30,8 +36,13 @@ import {
   SessionConfig,
 } from '../services/jsonbinService';
 import { FideGame, OpponentPlayer, Tournament } from '../types/fide';
-import { formatPlayerNameLastFirst } from '../utils/fideValidation';
+import {
+  formatPlayerNameLastFirst,
+  getOpponentEloForCadence,
+  isOpponentEloUnknownForCadence,
+} from '../utils/fideValidation';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
+import { IconButton } from './IconButton';
 
 interface SettingsSectionProps {
   session: SessionConfig;
@@ -198,134 +209,126 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
   const renderStatusBadge = (status: BinSyncStatus) => {
     if (status.state === 'syncing') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 text-xs font-bold">
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-[#D4A853]">
           <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-          Synchronisation...
+          Synchro...
         </span>
       );
     }
     if (status.state === 'error') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-rose-100 text-rose-900 text-xs font-bold">
-          <AlertTriangle className="w-3.5 h-3.5 text-rose-700" />
-          Erreur API (Cache local protégé)
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-rose-400">
+          <AlertTriangle className="w-3.5 h-3.5" />
+          Erreur API
         </span>
       );
     }
     if (status.state === 'synced') {
       return (
-        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 text-xs font-bold">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
-          Connecté & Synchronisé
+        <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-emerald-400">
+          <CheckCircle2 className="w-3.5 h-3.5" />
+          Synchronisé
         </span>
       );
     }
     return (
-      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 text-xs font-bold">
-        <HardDrive className="w-3.5 h-3.5 text-slate-600" />
-        Prêt (Cache local chargé — 0 requête auto)
+      <span className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold text-[#9BA7B8]">
+        <HardDrive className="w-3.5 h-3.5" />
+        Cache prêt
       </span>
     );
   };
 
   return (
-    <div className="space-y-7">
+    <div className="space-y-6">
       {/* En-tête de la page Paramètres */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#232C3A] pb-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900">
-            Paramètres, Statuts JSONBin & Cache Local
+          <h1 className="font-display text-2xl font-bold tracking-tight text-[#F1F4F8]">
+            Paramètres, JSONBin & Cache Local
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
-            Surveillez l’état de vos 2 bases JSONBin sans consommer de requêtes inutiles et restaurez vos données depuis le cache local en cas de problème.
+          <p className="text-xs text-[#9BA7B8] mt-1">
+            Gérez vos 2 bases JSONBin sans polling automatique, la corbeille locale et les points de restauration.
           </p>
         </div>
 
-        <div className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-900 shrink-0">
-          <ShieldCheck className="w-4 h-4 text-emerald-600" />
-          Économie de requêtes active (0 polling automatique)
+        <div className="inline-flex items-center gap-2 text-xs font-mono text-emerald-400 shrink-0">
+          <ShieldCheck className="w-4 h-4" />
+          <span>0 requête auto</span>
         </div>
       </div>
 
       {restoringNotice && (
-        <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl flex items-center justify-between gap-3 text-sm font-bold text-emerald-950">
-          <div className="flex items-center gap-2">
-            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+        <div className="p-4 bg-[#19202B] border border-emerald-500/40 rounded-2xl flex items-center justify-between gap-3 text-xs font-semibold text-emerald-300">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
             <span>{restoringNotice}</span>
           </div>
-          <button
-            type="button"
+          <IconButton
+            label="Fermer"
+            variant="ghost"
+            size="xs"
             onClick={() => setRestoringNotice(null)}
-            className="text-xs underline text-emerald-800"
           >
-            Fermer
-          </button>
+            <X className="w-3.5 h-3.5" />
+          </IconButton>
         </div>
       )}
 
-      {/* SECTION 1 : STATUT DES 2 JSONBIN (FIDE CLASSÉ & AMICAL) */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* SECTION 1 : STATUT DES 2 JSONBIN */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
         {/* Carte JSONBin #1 : Parties Classées FIDE */}
-        <div className="bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl p-6 space-y-5 shadow-2xs">
+        <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-indigo-700">
-                <Trophy className="w-4 h-4" />
-                JSONBin #1 · Base Officielle (Classé FIDE)
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                <Trophy className="w-3.5 h-3.5" />
+                JSONBin #1 · Base Classée FIDE
               </div>
-              <h2 className="text-lg font-extrabold text-slate-900 font-mono">
-                ID : {session.binId}
+              <h2 className="text-base font-bold text-[#F1F4F8] font-mono">
+                {session.binId}
               </h2>
             </div>
             {renderStatusBadge(fideStatus)}
           </div>
 
           {fideStatus.lastError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 font-mono">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-mono">
               Dernière erreur : {fideStatus.lastError}
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-center">
-            <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-indigo-900">
-                Tournois
-              </div>
-              <div className="text-xl font-extrabold text-indigo-700 mt-0.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-center">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Tournois</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {fideDb.tournaments.length}
               </div>
             </div>
-            <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-indigo-900">
-                Parties FIDE
-              </div>
-              <div className="text-xl font-extrabold text-indigo-700 mt-0.5">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Parties</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {fideDb.games.length}
               </div>
             </div>
-            <div className="p-3 bg-indigo-50/60 border border-indigo-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-indigo-900">
-                Joueurs
-              </div>
-              <div className="text-xl font-extrabold text-indigo-700 mt-0.5">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Joueurs</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {fideDb.opponents.length}
               </div>
             </div>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-slate-700">
-                Requêtes Session
-              </div>
-              <div className="text-sm font-extrabold text-slate-900 mt-1">
-                {fideStatus.getRequestsCount} GET · {fideStatus.putRequestsCount}{' '}
-                PUT
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Requêtes</div>
+              <div className="text-xs font-bold text-emerald-400 mt-1.5 tabular-nums">
+                {fideStatus.getRequestsCount}G · {fideStatus.putRequestsCount}P
               </div>
             </div>
           </div>
 
-          <div className="text-xs text-slate-600 flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+          <div className="text-xs text-[#9BA7B8] flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#232C3A]">
             <span>
-              Dernière synchro :{' '}
-              <strong className="font-mono text-slate-900">
+              Synchro :{' '}
+              <strong className="font-mono text-[#F1F4F8]">
                 {fideStatus.lastSyncedAt
                   ? new Date(fideStatus.lastSyncedAt).toLocaleString('fr-FR')
                   : fideDb.updatedAt
@@ -333,100 +336,93 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                   : 'Non synchronisé'}
               </strong>
             </span>
-            <span className="font-mono">Cache local : {fideSizeKb} Ko</span>
+            <span className="font-mono text-[#6C788B]">{fideSizeKb} Ko</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 pt-1">
-            <button
-              type="button"
+          <div className="flex items-center gap-2 pt-1">
+            <IconButton
+              label="Lire depuis le Bin #1 (1 GET)"
+              variant="surface"
+              size="md"
+              disabled={fideStatus.state === 'syncing'}
               onClick={onSyncFideFromCloud}
-              disabled={fideStatus.state === 'syncing'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-indigo-700" />
-              Lire depuis le Bin #1 (1 GET)
-            </button>
-            <button
-              type="button"
+              <RefreshCw
+                className={`w-4 h-4 ${fideStatus.state === 'syncing' ? 'animate-spin' : ''}`}
+              />
+            </IconButton>
+            <IconButton
+              label="Forcer l'envoi du cache vers Bin #1 (1 PUT)"
+              variant="primary"
+              size="md"
+              disabled={fideStatus.state === 'syncing'}
               onClick={onPushFideToCloud}
-              disabled={fideStatus.state === 'syncing'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
-              <UploadCloud className="w-3.5 h-3.5" />
-              Forcer l’envoi du cache vers Bin #1 (1 PUT)
-            </button>
-            <button
-              type="button"
+              <UploadCloud className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              label="Exporter la base FIDE en .JSON"
+              variant="surface"
+              size="md"
               onClick={() => handleDownloadJson('fide')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              Exporter .JSON
-            </button>
+              <Download className="w-4 h-4" />
+            </IconButton>
           </div>
         </div>
 
         {/* Carte JSONBin #2 : Parties Amicales */}
-        <div className="bg-white border border-slate-200 border-t-4 border-t-emerald-600 rounded-2xl p-6 space-y-5 shadow-2xs">
+        <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
           <div className="flex items-start justify-between gap-3">
             <div className="space-y-1">
-              <div className="inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emerald-700">
-                <Coffee className="w-4 h-4" />
-                JSONBin #2 · Base Indépendante (Parties Amicales)
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-mono font-bold uppercase tracking-wider text-[#D4A853]">
+                <Coffee className="w-3.5 h-3.5" />
+                JSONBin #2 · Base Parties Amicales
               </div>
-              <h2 className="text-lg font-extrabold text-slate-900 font-mono">
-                ID : {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID}
+              <h2 className="text-base font-bold text-[#F1F4F8] font-mono">
+                {session.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID}
               </h2>
             </div>
             {renderStatusBadge(friendlyStatus)}
           </div>
 
           {friendlyStatus.lastError && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 font-mono">
+            <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300 font-mono">
               Dernière erreur : {friendlyStatus.lastError}
             </div>
           )}
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 font-mono text-center">
-            <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-emerald-900">
-                Sessions
-              </div>
-              <div className="text-xl font-extrabold text-emerald-700 mt-0.5">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 font-mono text-center">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Sessions</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {friendlyDb.tournaments.length}
               </div>
             </div>
-            <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-emerald-900">
-                Parties Amicales
-              </div>
-              <div className="text-xl font-extrabold text-emerald-700 mt-0.5">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Parties</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {friendlyDb.games.length}
               </div>
             </div>
-            <div className="p-3 bg-emerald-50/60 border border-emerald-100 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-emerald-900">
-                Amis / Joueurs
-              </div>
-              <div className="text-xl font-extrabold text-emerald-700 mt-0.5">
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Joueurs</div>
+              <div className="text-lg font-bold text-[#F1F4F8] mt-0.5 tabular-nums">
                 {friendlyDb.opponents.length}
               </div>
             </div>
-            <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
-              <div className="text-[11px] font-sans font-bold text-slate-700">
-                Requêtes Session
-              </div>
-              <div className="text-sm font-extrabold text-slate-900 mt-1">
-                {friendlyStatus.getRequestsCount} GET ·{' '}
-                {friendlyStatus.putRequestsCount} PUT
+            <div className="p-3 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <div className="text-[11px] font-sans text-[#6C788B]">Requêtes</div>
+              <div className="text-xs font-bold text-[#D4A853] mt-1.5 tabular-nums">
+                {friendlyStatus.getRequestsCount}G · {friendlyStatus.putRequestsCount}P
               </div>
             </div>
           </div>
 
-          <div className="text-xs text-slate-600 flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-100">
+          <div className="text-xs text-[#9BA7B8] flex flex-wrap items-center justify-between gap-2 pt-3 border-t border-[#232C3A]">
             <span>
-              Dernière synchro :{' '}
-              <strong className="font-mono text-slate-900">
+              Synchro :{' '}
+              <strong className="font-mono text-[#F1F4F8]">
                 {friendlyStatus.lastSyncedAt
                   ? new Date(friendlyStatus.lastSyncedAt).toLocaleString('fr-FR')
                   : friendlyDb.updatedAt
@@ -434,71 +430,72 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                   : 'Non synchronisé'}
               </strong>
             </span>
-            <span className="font-mono">Cache local : {friendlySizeKb} Ko</span>
+            <span className="font-mono text-[#6C788B]">{friendlySizeKb} Ko</span>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5 pt-1">
-            <button
-              type="button"
+          <div className="flex items-center gap-2 pt-1">
+            <IconButton
+              label="Lire depuis le Bin #2 (1 GET)"
+              variant="surface"
+              size="md"
+              disabled={friendlyStatus.state === 'syncing'}
               onClick={onSyncFriendlyFromCloud}
-              disabled={friendlyStatus.state === 'syncing'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-emerald-700" />
-              Lire depuis le Bin #2 (1 GET)
-            </button>
-            <button
-              type="button"
+              <RefreshCw
+                className={`w-4 h-4 ${friendlyStatus.state === 'syncing' ? 'animate-spin' : ''}`}
+              />
+            </IconButton>
+            <IconButton
+              label="Forcer l'envoi du cache vers Bin #2 (1 PUT)"
+              variant="gold"
+              size="md"
+              disabled={friendlyStatus.state === 'syncing'}
               onClick={onPushFriendlyToCloud}
-              disabled={friendlyStatus.state === 'syncing'}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer disabled:opacity-50"
             >
-              <UploadCloud className="w-3.5 h-3.5" />
-              Forcer l’envoi du cache vers Bin #2 (1 PUT)
-            </button>
-            <button
-              type="button"
+              <UploadCloud className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              label="Exporter la base Amicale en .JSON"
+              variant="surface"
+              size="md"
               onClick={() => handleDownloadJson('friendly')}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
             >
-              <Download className="w-3.5 h-3.5" />
-              Exporter .JSON
-            </button>
+              <Download className="w-4 h-4" />
+            </IconButton>
           </div>
         </div>
       </div>
 
-      {/* SECTION 2 : CORBEILLE DE SECOURS LOCALE (RESTAURER UNE DONNÉE SUPPRIMÉE) */}
-      <div className="bg-white border border-slate-200 border-t-4 border-t-amber-500 rounded-2xl p-6 space-y-4 shadow-2xs">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+      {/* SECTION 2 : CORBEILLE DE SECOURS LOCALE */}
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between gap-3 border-b border-[#232C3A] pb-4">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <ArchiveRestore className="w-5 h-5 text-amber-600" />
-              Corbeille de Secours Locale ({deletedVault.length} élément
-              {deletedVault.length > 1 ? 's' : ''})
+            <h2 className="font-display text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <ArchiveRestore className="w-4 h-4 text-[#D4A853]" />
+              Corbeille Locale ({deletedVault.length})
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Chaque fois que vous supprimez un tournoi, une partie, un joueur ou un relevé Elo, une copie est conservée dans le cache local de votre navigateur pour pouvoir la restaurer en 1 clic.
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Copie locale automatique de vos suppressions pour restauration en 1 clic.
             </p>
           </div>
           {deletedVault.length > 0 && (
-            <button
-              type="button"
+            <IconButton
+              label="Vider définitivement la corbeille locale"
+              variant="danger"
+              size="sm"
               onClick={() => setConfirmClearVault(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-xl cursor-pointer shrink-0"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              Vider la corbeille locale
-            </button>
+              <Trash2 className="w-4 h-4" />
+            </IconButton>
           )}
         </div>
 
         {deletedVault.length === 0 ? (
-          <div className="p-6 text-center bg-slate-50 rounded-xl border border-slate-200/80 text-sm text-slate-600">
-            Aucun élément supprimé récemment. Vos suppressions futures apparaîtront ici automatiquement en cas d’erreur.
+          <div className="p-6 text-center bg-[#19202B] rounded-xl border border-[#232C3A] text-xs text-[#6C788B]">
+            Aucun élément supprimé récemment.
           </div>
         ) : (
-          <div className="divide-y divide-slate-200 border border-slate-200 rounded-xl overflow-hidden">
+          <div className="divide-y divide-[#232C3A] border border-[#232C3A] rounded-xl overflow-hidden">
             {deletedVault.map((item) => {
               const isFide = item.ledger === 'fide';
               const typeLabel =
@@ -513,36 +510,31 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
               return (
                 <div
                   key={item.id}
-                  className="p-4 bg-white hover:bg-slate-50 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                  className="p-4 bg-[#19202B] hover:bg-[#212A38] flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors"
                 >
                   <div className="space-y-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span
-                        className={`px-2 py-0.5 rounded text-[11px] font-extrabold ${
-                          isFide
-                            ? 'bg-indigo-100 text-indigo-900'
-                            : 'bg-emerald-100 text-emerald-900'
-                        }`}
-                      >
-                        {isFide ? 'Base Classée FIDE' : 'Base Parties Amicales'}
+                    <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
+                      <span className={isFide ? 'text-emerald-400 font-bold' : 'text-[#D4A853] font-bold'}>
+                        {isFide ? 'Base FIDE' : 'Base Amicale'}
                       </span>
-                      <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-900 text-[11px] font-bold">
-                        {typeLabel}
-                      </span>
-                      <span className="text-xs font-mono text-slate-500">
-                        Supprimé le{' '}
+                      <span className="text-[#475569]">·</span>
+                      <span className="text-[#F1F4F8]">{typeLabel}</span>
+                      <span className="text-[#475569]">·</span>
+                      <span className="text-[#6C788B]">
                         {new Date(item.deletedAt).toLocaleString('fr-FR')}
                       </span>
                     </div>
-                    <div className="font-bold text-slate-900 text-sm">
+                    <div className="font-semibold text-[#F1F4F8] text-sm">
                       {item.label}
                     </div>
-                    <div className="text-xs text-slate-600">{item.details}</div>
+                    <div className="text-xs text-[#9BA7B8]">{item.details}</div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <IconButton
+                      label="Restaurer cette donnée"
+                      variant="primary"
+                      size="sm"
                       onClick={async () => {
                         await onRestoreDeletedItem(item);
                         showNotice(
@@ -551,19 +543,17 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                           }.`
                         );
                       }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl transition-colors cursor-pointer"
                     >
                       <RotateCcw className="w-3.5 h-3.5" />
-                      Restaurer cette donnée
-                    </button>
-                    <button
-                      type="button"
+                    </IconButton>
+                    <IconButton
+                      label="Retirer de la corbeille"
+                      variant="ghost"
+                      size="sm"
                       onClick={() => onRemoveDeletedItem(item.id)}
-                      className="p-2 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
-                      title="Retirer de la corbeille"
                     >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </IconButton>
                   </div>
                 </div>
               );
@@ -573,21 +563,23 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
       </div>
 
       {/* SECTION 3 : EXPLORATEUR DU CACHE LOCAL & POINTS DE RESTAURATION SÉLECTIVE */}
-      <div className="bg-white border border-slate-200 border-t-4 border-t-violet-600 rounded-2xl p-6 space-y-5 shadow-2xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-[#232C3A] pb-4">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <HardDrive className="w-5 h-5 text-violet-600" />
-              Cache Local & Restauration Sélective de Données
+            <h2 className="font-display text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <HardDrive className="w-4 h-4 text-emerald-400" />
+              Cache Local & Points de Restauration
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Créez des points de sauvegarde locaux ou parcourez le cache local pour restaurer uniquement un joueur, une partie, un tournoi ou une catégorie entière.
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Créez des points de sauvegarde locaux ou restaurez sélectivement un tournoi, une partie ou un joueur.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
+          <div className="flex items-center gap-2 shrink-0">
+            <IconButton
+              label="Créer un point de sauvegarde Cache FIDE (#1)"
+              variant="primary"
+              size="md"
               onClick={() => {
                 onCreateSnapshot(
                   'fide',
@@ -597,13 +589,13 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                   'Point de restauration local créé pour la Base Classée FIDE.'
                 );
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-indigo-900 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-xl cursor-pointer"
             >
-              <Save className="w-3.5 h-3.5 text-indigo-700" />
-              Sauvegarder Cache FIDE (#1)
-            </button>
-            <button
-              type="button"
+              <Save className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              label="Créer un point de sauvegarde Cache Amical (#2)"
+              variant="gold"
+              size="md"
               onClick={() => {
                 onCreateSnapshot(
                   'friendly',
@@ -613,20 +605,18 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                   'Point de restauration local créé pour la Base Parties Amicales.'
                 );
               }}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-emerald-900 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-xl cursor-pointer"
             >
-              <Save className="w-3.5 h-3.5 text-emerald-700" />
-              Sauvegarder Cache Amical (#2)
-            </button>
+              <Save className="w-4 h-4" />
+            </IconButton>
           </div>
         </div>
 
-        {/* Liste des points de restauration locaux (Snapshots) */}
+        {/* Liste des points de restauration locaux */}
         {snapshots.length > 0 && (
-          <div className="space-y-2.5">
-            <div className="text-xs font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-violet-600" />
-              Points de restauration locaux enregistrés ({snapshots.length})
+          <div className="space-y-3">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-[#6C788B] flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-[#D4A853]" />
+              Points de restauration ({snapshots.length})
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {snapshots.map((snap) => {
@@ -637,47 +627,51 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                     key={snap.id}
                     className={`p-4 rounded-xl border transition-all flex flex-col justify-between gap-3 ${
                       isSelected
-                        ? 'bg-violet-50/70 border-2 border-violet-500'
-                        : 'bg-slate-50 border-slate-200'
+                        ? 'bg-[#212A38] border-emerald-500/50'
+                        : 'bg-[#19202B] border-[#232C3A]'
                     }`}
                   >
                     <div className="space-y-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <span
-                          className={`px-2 py-0.5 rounded text-[11px] font-extrabold ${
-                            isFide
-                              ? 'bg-indigo-100 text-indigo-900'
-                              : 'bg-emerald-100 text-emerald-900'
-                          }`}
-                        >
+                      <div className="flex items-center justify-between gap-2 text-[11px] font-mono">
+                        <span className={isFide ? 'text-emerald-400 font-bold' : 'text-[#D4A853] font-bold'}>
                           {isFide ? 'Base Classée FIDE' : 'Base Amicale'}
                         </span>
-                        <span className="text-xs font-mono text-slate-500">
+                        <span className="text-[#6C788B]">
                           {new Date(snap.createdAt).toLocaleString('fr-FR')}
                         </span>
                       </div>
-                      <div className="font-bold text-slate-900 text-sm">
+                      <div className="font-semibold text-[#F1F4F8] text-sm">
                         {snap.reason}
                       </div>
-                      <div className="text-xs font-mono text-slate-600">
+                      <div className="text-xs font-mono text-[#9BA7B8]">
                         {snap.summary}
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-200/80">
-                      <button
-                        type="button"
+                    <div className="flex items-center gap-2 pt-2 border-t border-[#232C3A]">
+                      <IconButton
+                        label={
+                          isSelected
+                            ? 'Fermer l’inspection'
+                            : 'Inspecter ce point de sauvegarde'
+                        }
+                        variant={isSelected ? 'active' : 'surface'}
+                        size="sm"
                         onClick={() =>
                           setSelectedSnapshotId(isSelected ? '' : snap.id)
                         }
-                        className="px-3 py-1.5 text-xs font-bold text-violet-900 bg-white hover:bg-violet-100 border border-violet-200 rounded-lg cursor-pointer"
                       >
-                        {isSelected
-                          ? 'Fermer l’inspection'
-                          : 'Parcourir certaines données'}
-                      </button>
-                      <button
-                        type="button"
+                        {isSelected ? (
+                          <EyeOff className="w-3.5 h-3.5" />
+                        ) : (
+                          <Eye className="w-3.5 h-3.5" />
+                        )}
+                      </IconButton>
+
+                      <IconButton
+                        label="Tout restaurer depuis ce snapshot"
+                        variant="primary"
+                        size="sm"
                         onClick={async () => {
                           await onRestoreFullSnapshot(snap);
                           showNotice(
@@ -686,23 +680,24 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                             ).toLocaleString('fr-FR')} restauré intégralement.`
                           );
                         }}
-                        className="px-3 py-1.5 text-xs font-bold text-white bg-violet-600 hover:bg-violet-700 rounded-lg cursor-pointer"
                       >
-                        Tout restaurer
-                      </button>
-                      <button
-                        type="button"
+                        <RotateCcw className="w-3.5 h-3.5" />
+                      </IconButton>
+
+                      <IconButton
+                        label="Supprimer ce point de sauvegarde"
+                        variant="danger"
+                        size="sm"
+                        className="ml-auto"
                         onClick={() => {
                           if (selectedSnapshotId === snap.id) {
                             setSelectedSnapshotId('');
                           }
                           onDeleteSnapshot(snap.id);
                         }}
-                        className="ml-auto p-1.5 text-slate-400 hover:text-rose-600 rounded-lg cursor-pointer"
-                        title="Supprimer ce point de sauvegarde"
                       >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </IconButton>
                     </div>
                   </div>
                 );
@@ -711,53 +706,50 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
           </div>
         )}
 
-        {/* Inspecteur granulaire du cache local (Restaurer certaines données) */}
-        <div className="p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4">
+        {/* Inspecteur granulaire du cache local */}
+        <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <div className="text-xs font-extrabold uppercase tracking-wider text-violet-800">
+              <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400">
                 Inspecteur de contenu local
               </div>
-              <div className="text-sm font-bold text-slate-900 mt-0.5">
+              <div className="text-sm font-semibold text-[#F1F4F8] mt-0.5">
                 {inspectedSource.label}
               </div>
             </div>
 
             {!selectedSnapshot && (
-              <div className="flex items-center gap-1.5 bg-white p-1 rounded-xl border border-slate-200">
-                <button
-                  type="button"
+              <div className="flex items-center gap-1.5">
+                <IconButton
+                  label="Inspecter le cache FIDE (#1)"
+                  variant={inspectorLedger === 'fide' ? 'active' : 'surface'}
+                  size="sm"
                   onClick={() => setInspectorLedger('fide')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
-                    inspectorLedger === 'fide'
-                      ? 'bg-indigo-600 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
                 >
-                  Cache FIDE (#1)
-                </button>
-                <button
-                  type="button"
+                  <Trophy className="w-3.5 h-3.5" />
+                </IconButton>
+                <IconButton
+                  label="Inspecter le cache Amical (#2)"
+                  variant={inspectorLedger === 'friendly' ? 'gold' : 'surface'}
+                  size="sm"
                   onClick={() => setInspectorLedger('friendly')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer ${
-                    inspectorLedger === 'friendly'
-                      ? 'bg-emerald-600 text-white'
-                      : 'text-slate-700 hover:bg-slate-100'
-                  }`}
                 >
-                  Cache Amical (#2)
-                </button>
+                  <Coffee className="w-3.5 h-3.5" />
+                </IconButton>
               </div>
             )}
           </div>
 
           {selectedSnapshot && (
-            <div className="flex flex-wrap items-center gap-2 p-3 bg-violet-100/70 border border-violet-200 rounded-xl text-xs">
-              <span className="font-bold text-violet-950">
-                Restauration par catégorie depuis ce point de sauvegarde :
+            <div className="flex flex-wrap items-center gap-2 p-3 bg-[#131820] border border-[#2B3647] rounded-xl text-xs">
+              <span className="font-semibold text-[#9BA7B8] mr-1">
+                Restauration ciblée :
               </span>
-              <button
-                type="button"
+              <IconButton
+                label={`Restaurer uniquement les Tournois (${inspectedSource.tournaments.length})`}
+                variant="surface"
+                size="sm"
+                badge={inspectedSource.tournaments.length}
                 onClick={async () => {
                   await onRestoreSelectiveFromSnapshot(
                     selectedSnapshot,
@@ -767,13 +759,14 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                     'Les tournois de ce point de sauvegarde ont été restaurés.'
                   );
                 }}
-                className="px-2.5 py-1 bg-white hover:bg-violet-50 text-violet-900 font-bold rounded-lg border border-violet-300 cursor-pointer"
               >
-                Restaurer uniquement les Tournois (
-                {inspectedSource.tournaments.length})
-              </button>
-              <button
-                type="button"
+                <Trophy className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                label={`Restaurer uniquement les Parties (${inspectedSource.games.length})`}
+                variant="surface"
+                size="sm"
+                badge={inspectedSource.games.length}
                 onClick={async () => {
                   await onRestoreSelectiveFromSnapshot(
                     selectedSnapshot,
@@ -783,12 +776,14 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                     'Les parties de ce point de sauvegarde ont été restaurées.'
                   );
                 }}
-                className="px-2.5 py-1 bg-white hover:bg-violet-50 text-violet-900 font-bold rounded-lg border border-violet-300 cursor-pointer"
               >
-                Restaurer uniquement les Parties ({inspectedSource.games.length})
-              </button>
-              <button
-                type="button"
+                <Swords className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                label={`Restaurer uniquement les Joueurs (${inspectedSource.opponents.length})`}
+                variant="surface"
+                size="sm"
+                badge={inspectedSource.opponents.length}
                 onClick={async () => {
                   await onRestoreSelectiveFromSnapshot(
                     selectedSnapshot,
@@ -798,74 +793,68 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                     'Les joueurs de ce point de sauvegarde ont été restaurés.'
                   );
                 }}
-                className="px-2.5 py-1 bg-white hover:bg-violet-50 text-violet-900 font-bold rounded-lg border border-violet-300 cursor-pointer"
               >
-                Restaurer uniquement les Joueurs (
-                {inspectedSource.opponents.length})
-              </button>
+                <Users className="w-3.5 h-3.5" />
+              </IconButton>
             </div>
           )}
 
           {/* Onglets : Parties / Tournois / Joueurs du cache */}
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
+          <div className="flex items-center gap-2">
+            <IconButton
+              label={`Parties en cache (${inspectedSource.games.length})`}
+              variant={inspectorTab === 'games' ? 'active' : 'surface'}
+              size="sm"
+              badge={inspectedSource.games.length}
               onClick={() => setInspectorTab('games')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer ${
-                inspectorTab === 'games'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-700 border border-slate-200'
-              }`}
             >
-              Parties en cache ({inspectedSource.games.length})
-            </button>
-            <button
-              type="button"
+              <Swords className="w-3.5 h-3.5" />
+            </IconButton>
+            <IconButton
+              label={`Tournois en cache (${inspectedSource.tournaments.length})`}
+              variant={inspectorTab === 'tournaments' ? 'active' : 'surface'}
+              size="sm"
+              badge={inspectedSource.tournaments.length}
               onClick={() => setInspectorTab('tournaments')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer ${
-                inspectorTab === 'tournaments'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-700 border border-slate-200'
-              }`}
             >
-              Tournois en cache ({inspectedSource.tournaments.length})
-            </button>
-            <button
-              type="button"
+              <Trophy className="w-3.5 h-3.5" />
+            </IconButton>
+            <IconButton
+              label={`Joueurs en cache (${inspectedSource.opponents.length})`}
+              variant={inspectorTab === 'opponents' ? 'active' : 'surface'}
+              size="sm"
+              badge={inspectedSource.opponents.length}
               onClick={() => setInspectorTab('opponents')}
-              className={`px-3.5 py-2 rounded-xl text-xs font-bold cursor-pointer ${
-                inspectorTab === 'opponents'
-                  ? 'bg-slate-900 text-white'
-                  : 'bg-white text-slate-700 border border-slate-200'
-              }`}
             >
-              Joueurs en cache ({inspectedSource.opponents.length})
-            </button>
+              <Users className="w-3.5 h-3.5" />
+            </IconButton>
           </div>
 
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-200 bg-white border border-slate-200 rounded-xl">
+          <div className="max-h-72 overflow-y-auto divide-y divide-[#232C3A] bg-[#131820] border border-[#232C3A] rounded-xl">
             {inspectorTab === 'games' &&
               (inspectedSource.games.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-500">
+                <div className="p-6 text-center text-xs text-[#6C788B]">
                   Aucune partie dans ce cache.
                 </div>
               ) : (
                 inspectedSource.games.map((g) => (
                   <div
                     key={g.id}
-                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-50"
+                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-[#19202B]"
                   >
-                    <div>
-                      <span className="font-bold text-slate-900">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[#F1F4F8]">
                         Ronde {g.round} vs{' '}
                         {formatPlayerNameLastFirst(g.opponentName)}
                       </span>
-                      <span className="text-slate-500 ml-2">
-                        ({g.tournamentName} · {g.datePlayed})
+                      <span className="text-[#6C788B] ml-2 font-mono">
+                        {g.tournamentName} · {g.datePlayed}
                       </span>
                     </div>
-                    <button
-                      type="button"
+                    <IconButton
+                      label="Restaurer / synchroniser cette partie"
+                      variant="surface"
+                      size="xs"
                       onClick={async () => {
                         await onRestoreSingleEntity(
                           inspectedSource.ledger,
@@ -878,33 +867,34 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                           )} a été restaurée / ré-appliquée.`
                         );
                       }}
-                      className="px-3 py-1.5 font-bold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg cursor-pointer shrink-0"
                     >
-                      Restaurer / Synchroniser cette partie
-                    </button>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </IconButton>
                   </div>
                 ))
               ))}
 
             {inspectorTab === 'tournaments' &&
               (inspectedSource.tournaments.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-500">
+                <div className="p-6 text-center text-xs text-[#6C788B]">
                   Aucun tournoi dans ce cache.
                 </div>
               ) : (
                 inspectedSource.tournaments.map((t) => (
                   <div
                     key={t.id}
-                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-50"
+                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-[#19202B]"
                   >
-                    <div>
-                      <span className="font-bold text-slate-900">{t.name}</span>
-                      <span className="text-slate-500 ml-2">
-                        ({t.location} · {t.startDate})
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[#F1F4F8]">{t.name}</span>
+                      <span className="text-[#6C788B] ml-2 font-mono">
+                        {t.location} · {t.startDate}
                       </span>
                     </div>
-                    <button
-                      type="button"
+                    <IconButton
+                      label="Restaurer ce tournoi"
+                      variant="surface"
+                      size="xs"
                       onClick={async () => {
                         await onRestoreSingleEntity(
                           inspectedSource.ledger,
@@ -915,36 +905,47 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                           `Le tournoi "${t.name}" a été restauré / ré-appliqué.`
                         );
                       }}
-                      className="px-3 py-1.5 font-bold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg cursor-pointer shrink-0"
                     >
-                      Restaurer ce tournoi
-                    </button>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </IconButton>
                   </div>
                 ))
               ))}
 
             {inspectorTab === 'opponents' &&
               (inspectedSource.opponents.length === 0 ? (
-                <div className="p-6 text-center text-xs text-slate-500">
+                <div className="p-6 text-center text-xs text-[#6C788B]">
                   Aucun joueur dans ce cache.
                 </div>
               ) : (
                 inspectedSource.opponents.map((o) => (
                   <div
                     key={o.id}
-                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-slate-50"
+                    className="p-3.5 flex items-center justify-between gap-3 text-xs hover:bg-[#19202B]"
                   >
-                    <div>
-                      <span className="font-bold text-slate-900">
+                    <div className="min-w-0">
+                      <span className="font-semibold text-[#F1F4F8]">
                         {formatPlayerNameLastFirst(o.name)}
                       </span>
-                      <span className="font-mono text-slate-500 ml-2">
-                        (Std {o.standardElo || o.elo} · Rap{' '}
-                        {o.rapidElo || o.elo} · Blz {o.blitzElo || o.elo})
+                      <span className="font-mono text-[#9BA7B8] ml-2">
+                        Std{' '}
+                        {isOpponentEloUnknownForCadence(o, 'Standard')
+                          ? '?'
+                          : getOpponentEloForCadence(o, 'Standard')}{' '}
+                        · Rap{' '}
+                        {isOpponentEloUnknownForCadence(o, 'Rapid')
+                          ? '?'
+                          : getOpponentEloForCadence(o, 'Rapid')}{' '}
+                        · Blz{' '}
+                        {isOpponentEloUnknownForCadence(o, 'Blitz')
+                          ? '?'
+                          : getOpponentEloForCadence(o, 'Blitz')}
                       </span>
                     </div>
-                    <button
-                      type="button"
+                    <IconButton
+                      label="Restaurer ce joueur"
+                      variant="surface"
+                      size="xs"
                       onClick={async () => {
                         await onRestoreSingleEntity(
                           inspectedSource.ledger,
@@ -957,10 +958,9 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                           )}" a été restauré.`
                         );
                       }}
-                      className="px-3 py-1.5 font-bold text-violet-800 bg-violet-50 hover:bg-violet-100 border border-violet-200 rounded-lg cursor-pointer shrink-0"
                     >
-                      Restaurer ce joueur
-                    </button>
+                      <RotateCcw className="w-3.5 h-3.5" />
+                    </IconButton>
                   </div>
                 ))
               ))}
@@ -971,33 +971,33 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
       {/* SECTION 4 : CONFIGURATION DES CLÉS & ID DES 2 JSONBIN */}
       <form
         onSubmit={handleSaveConfig}
-        className="bg-white border border-slate-200 rounded-2xl p-6 space-y-5 shadow-2xs"
+        className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+        <div className="flex items-center justify-between gap-3 border-b border-[#232C3A] pb-4">
           <div>
-            <h2 className="text-lg font-extrabold text-slate-900 flex items-center gap-2">
-              <Database className="w-5 h-5 text-indigo-600" />
-              Identifiants de connexion des 2 JSONBin
+            <h2 className="font-display text-base font-bold text-[#F1F4F8] flex items-center gap-2">
+              <Database className="w-4 h-4 text-emerald-400" />
+              Identifiants des 2 JSONBin
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              Vos deux identifiants de Bin sont enregistrés localement et totalement isolés l’un de l’autre.
+            <p className="text-xs text-[#9BA7B8] mt-0.5">
+              Enregistrés localement et totalement isolés l’un de l’autre.
             </p>
           </div>
           {configSavedBanner && (
-            <span className="text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-              ✓ Paramètres enregistrés
+            <span className="text-xs font-mono font-bold text-emerald-400">
+              ✓ Enregistré
             </span>
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {/* Config Bin #1 */}
-          <div className="p-4 bg-indigo-50/40 border border-indigo-200 rounded-xl space-y-3">
-            <div className="text-xs font-extrabold text-indigo-950 uppercase tracking-wider">
-              1. JSONBin Officiel (Parties Classées FIDE)
+          <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-3">
+            <div className="text-[11px] font-mono font-bold text-emerald-400 uppercase tracking-wider">
+              1. JSONBin Officiel (Classé FIDE)
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#CBD5E1] mb-1.5">
                 ID du Bin Classé
               </label>
               <input
@@ -1005,33 +1005,33 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                 required
                 value={binIdInput}
                 onChange={(e) => setBinIdInput(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                className="w-full px-3 py-2 bg-[#131820] border border-[#2B3647] rounded-xl font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#CBD5E1] mb-1.5">
                 Clé Principale (X-Master-Key)
               </label>
               <div className="relative">
-                <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-3.5 h-3.5 text-[#6C788B] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   required
                   value={masterKeyInput}
                   onChange={(e) => setMasterKeyInput(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                  className="w-full pl-8 pr-3 py-2 bg-[#131820] border border-[#2B3647] rounded-xl font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
           </div>
 
           {/* Config Bin #2 */}
-          <div className="p-4 bg-emerald-50/40 border border-emerald-200 rounded-xl space-y-3">
-            <div className="text-xs font-extrabold text-emerald-950 uppercase tracking-wider">
+          <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-3">
+            <div className="text-[11px] font-mono font-bold text-[#D4A853] uppercase tracking-wider">
               2. JSONBin Indépendant (Parties Amicales)
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#CBD5E1] mb-1.5">
                 ID du Bin Amical
               </label>
               <input
@@ -1039,47 +1039,50 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                 required
                 value={friendlyBinIdInput}
                 onChange={(e) => setFriendlyBinIdInput(e.target.value)}
-                className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                className="w-full px-3 py-2 bg-[#131820] border border-[#2B3647] rounded-xl font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label className="block text-xs font-semibold text-[#CBD5E1] mb-1.5">
                 Clé Principale Bin Amical (X-Master-Key)
               </label>
               <div className="relative">
-                <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <KeyRound className="w-3.5 h-3.5 text-[#6C788B] absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   type="password"
                   required
                   value={friendlyMasterKeyInput}
                   onChange={(e) => setFriendlyMasterKeyInput(e.target.value)}
-                  className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs"
+                  className="w-full pl-8 pr-3 py-2 bg-[#131820] border border-[#2B3647] rounded-xl font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 />
               </div>
             </div>
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-          <button
-            type="button"
+        <div className="flex items-center justify-between gap-3 pt-2">
+          <IconButton
+            label="Remettre les IDs par défaut"
+            variant="surface"
+            size="md"
             onClick={() => {
               setBinIdInput(DEFAULT_JSONBIN_BIN_ID);
               setMasterKeyInput(DEFAULT_JSONBIN_MASTER_KEY);
               setFriendlyBinIdInput(DEFAULT_FRIENDLY_JSONBIN_BIN_ID);
               setFriendlyMasterKeyInput(DEFAULT_FRIENDLY_JSONBIN_MASTER_KEY);
             }}
-            className="text-xs font-bold text-indigo-700 hover:underline cursor-pointer"
           >
-            Remettre les IDs par défaut (6ac7d7e6ac6210605a20528d & 6aca804bffd5d160535fa90f)
-          </button>
+            <RotateCcw className="w-4 h-4" />
+          </IconButton>
 
-          <button
+          <IconButton
             type="submit"
-            className="px-5 py-2.5 text-xs font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl cursor-pointer"
+            label="Enregistrer la configuration des 2 Bins"
+            variant="primary"
+            size="md"
           >
-            Enregistrer la configuration des 2 Bins
-          </button>
+            <Check className="w-4 h-4" />
+          </IconButton>
         </div>
       </form>
 

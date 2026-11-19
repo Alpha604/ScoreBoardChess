@@ -75,6 +75,8 @@ export interface Tournament {
   pausedFields?: string[]; // Liste des éléments mis en pause
   normTarget: string;
   notes: string;
+  manualPerformance?: number; // Performance saisie manuellement (optionnelle)
+  manualEloDelta?: number; // Elo gagné/perdu saisi manuellement (optionnel)
 }
 
 export interface FideGame {

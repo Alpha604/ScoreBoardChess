@@ -1,17 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import {
   ArrowUpRight,
-  ChevronDown,
-  ChevronUp,
+  Check,
   Database,
   FileText,
   LayoutDashboard,
   Plus,
   RefreshCw,
   ShieldCheck,
+  Sparkles,
   Swords,
   Trophy,
   Users,
+  X,
   Zap,
 } from 'lucide-react';
 import {
@@ -30,9 +31,13 @@ import {
   formatPlayerNameDisplay,
   formatPlayerNameLastFirst,
   FREE_GAME_TOURNAMENT_ID,
+  getOpponentEloForCadence,
   hasQuestionMarkName,
+  isOpponentEloUnknownForCadence,
 } from '../utils/fideValidation';
+import { FederationFlag } from './FederationFlag';
 import { GamesSection } from './GamesSection';
+import { IconButton } from './IconButton';
 import { PlayersSection } from './PlayersSection';
 import { TournamentsSection } from './TournamentsSection';
 
@@ -203,7 +208,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         movesCount: 25,
         chessComUrl: quickChessComUrl.trim() || undefined,
         pgn: '',
-        keyMomentNote: 'Partie amicale d\'entraînement',
+        keyMomentNote: "Partie amicale d'entraînement",
       });
 
       setQuickOpponentName('');
@@ -243,56 +248,66 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
   ];
 
   return (
-    <div className="space-y-5">
-      {/* En-tête sobre et professionnel de l'Espace Parties Amicales */}
-      <div className="bg-white border border-slate-200 rounded-lg p-5 shadow-2xs space-y-4">
+    <div className="space-y-6">
+      {/* En-tête de l'Espace Parties Amicales */}
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="space-y-1">
-            <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-slate-100 border border-slate-300 text-[11px] font-mono font-bold text-slate-800">
-              BASE INDÉPENDANTE · JSONBIN #2 ({friendlyStatus.binId}) · AUCUN IMPACT ELO
+            <div className="text-[11px] font-mono uppercase tracking-wider text-[#D4A853]">
+              Base isolée · JSONBin #2 ({friendlyStatus.binId}) · Sans impact Elo
             </div>
-            <h1 className="text-xl font-bold text-slate-900">
-              Registre des Parties Amicales & Entraînement
+            <h1 className="font-display text-2xl font-bold tracking-tight text-[#F1F4F8]">
+              Parties Amicales & Entraînement
             </h1>
-            <p className="text-xs text-slate-600">
-              Enregistrez vos parties amicales libres (sans tournoi) ou vos sessions d’entraînement. Les parties amicales ne génèrent ni gain ni perte d’Elo.
+            <p className="text-xs text-[#9BA7B8]">
+              Enregistrez vos parties libres ou sessions amicales indépendamment de votre classement officiel.
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <button
-              type="button"
+          <div className="flex items-center gap-2 shrink-0">
+            <IconButton
+              label={
+                isQuickLoggerOpen
+                  ? 'Masquer la saisie express'
+                  : 'Saisie express en 1 clic'
+              }
+              variant={isQuickLoggerOpen ? 'gold' : 'surface'}
+              size="md"
+              tooltipPos="bottom"
               onClick={() => setIsQuickLoggerOpen((prev) => !prev)}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-amber-950 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-md transition-colors cursor-pointer"
             >
-              <Zap className="w-4 h-4 text-amber-700" />
-              {isQuickLoggerOpen ? 'Masquer saisie express' : '⚡ Saisie express (1 clic)'}
-            </button>
-            <button
-              type="button"
+              <Zap className="w-4 h-4" />
+            </IconButton>
+
+            <IconButton
+              label="Voir les parties libres (hors tournoi)"
+              variant="primary"
+              size="md"
+              tooltipPos="bottom"
               onClick={() => {
                 setSelectedTournamentFilter(FREE_GAME_TOURNAMENT_ID);
                 setSubTab('games');
               }}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              Parties libres (hors tournoi)
-            </button>
-            <button
-              type="button"
-              onClick={onRefreshFriendlyBin}
+            </IconButton>
+
+            <IconButton
+              label={
+                isSyncingFriendly
+                  ? 'Synchronisation en cours...'
+                  : 'Actualiser Bin #2'
+              }
+              variant="surface"
+              size="md"
+              tooltipPos="bottom"
               disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-md transition-colors cursor-pointer disabled:opacity-50"
-              title="Synchroniser uniquement le JSONBin des parties amicales (1 requête GET)"
+              onClick={onRefreshFriendlyBin}
             >
               <RefreshCw
-                className={`w-3.5 h-3.5 text-slate-600 ${
-                  isSyncingFriendly ? 'animate-spin' : ''
-                }`}
+                className={`w-4 h-4 ${isSyncingFriendly ? 'animate-spin' : ''}`}
               />
-              {isSyncingFriendly ? 'Synchronisation...' : 'Actualiser Bin #2'}
-            </button>
+            </IconButton>
           </div>
         </div>
 
@@ -300,35 +315,40 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         {isQuickLoggerOpen && (
           <form
             onSubmit={handleQuickSaveFriendlyGame}
-            className="p-4 bg-amber-50/80 border border-amber-300 rounded-lg space-y-3 pt-3"
+            className="p-4 bg-[#19202B] border border-[#D4A853]/35 rounded-xl space-y-3"
           >
-            <div className="flex items-center justify-between border-b border-amber-200/80 pb-2">
+            <div className="flex items-center justify-between border-b border-[#232C3A] pb-2.5">
               <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-700" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-amber-950">
-                  Enregistrement Express d'une Partie Amicale (Sans impact Elo)
+                <Zap className="w-4 h-4 text-[#D4A853]" />
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#F1F4F8]">
+                  Saisie Express · Sans impact Elo
                 </h3>
               </div>
-              <span className="text-[11px] text-amber-800 font-mono">
-                Sauvegarde directe dans le Bin Amical
-              </span>
+              <IconButton
+                label="Fermer la saisie express"
+                variant="ghost"
+                size="xs"
+                onClick={() => setIsQuickLoggerOpen(false)}
+              >
+                <X className="w-3.5 h-3.5" />
+              </IconButton>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 text-xs">
               {/* Choix adversaire ou saisie */}
               <div className="lg:col-span-4">
-                <div className="flex items-center justify-between mb-1">
-                  <label className="font-bold text-slate-800">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="font-semibold text-[#CBD5E1]">
                     Adversaire (NOM, Prénom) *
                   </label>
-                  <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-900 cursor-pointer">
+                  <label className="inline-flex items-center gap-1 text-[11px] font-semibold text-[#D4A853] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={quickOpponentUncertain}
                       onChange={(e) => setQuickOpponentUncertain(e.target.checked)}
-                      className="rounded border-amber-400"
+                      className="rounded border-[#2B3647] bg-[#131820]"
                     />
-                    Incertain (?)
+                    Incertain ?
                   </label>
                 </div>
                 <div className="space-y-1.5">
@@ -343,14 +363,17 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                           }
                         }
                       }}
-                      className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-800"
+                      className="w-full px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-semibold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                     >
-                      <option value="">-- Choisir un joueur déjà affronté --</option>
-                      {opponents.slice().sort((a, b) => a.name.localeCompare(b.name)).map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {formatPlayerNameDisplay(o.name, o.isNameUncertain)}
-                        </option>
-                      ))}
+                      <option value="">-- Joueur déjà affronté --</option>
+                      {opponents
+                        .slice()
+                        .sort((a, b) => a.name.localeCompare(b.name))
+                        .map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {formatPlayerNameDisplay(o.name, o.isNameUncertain)}
+                          </option>
+                        ))}
                     </select>
                   )}
                   <input
@@ -359,62 +382,62 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                     value={quickOpponentName}
                     onChange={(e) => setQuickOpponentName(e.target.value)}
                     placeholder="Ex: DUPONT, Jean"
-                    className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold text-slate-900"
+                    className="w-full px-2.5 py-1.5 bg-[#131820] border border-[#2B3647] rounded-lg font-semibold text-[#F1F4F8] placeholder:text-[#6C788B] focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
               {/* Résultat par rapport à moi : 3 boutons */}
               <div className="lg:col-span-3">
-                <label className="block font-bold text-slate-800 mb-1">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Mon Résultat
                 </label>
                 <div className="grid grid-cols-3 gap-1">
                   <button
                     type="button"
                     onClick={() => setQuickScore(1)}
-                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                    className={`py-2 px-1 rounded-lg font-mono font-bold text-xs border text-center transition-all cursor-pointer ${
                       quickScore === 1
-                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-xs'
-                        : 'bg-white text-emerald-800 border-emerald-300 hover:bg-emerald-50'
+                        ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/50'
+                        : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-emerald-300'
                     }`}
                   >
-                    Victoire
+                    1
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuickScore(0.5)}
-                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                    className={`py-2 px-1 rounded-lg font-mono font-bold text-xs border text-center transition-all cursor-pointer ${
                       quickScore === 0.5
-                        ? 'bg-amber-600 text-white border-amber-600 shadow-xs'
-                        : 'bg-white text-amber-800 border-amber-300 hover:bg-amber-50'
+                        ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/50'
+                        : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-[#D4A853]'
                     }`}
                   >
-                    Nulle
+                    ½
                   </button>
                   <button
                     type="button"
                     onClick={() => setQuickScore(0)}
-                    className={`py-1.5 px-1 rounded font-bold text-xs border text-center transition-all cursor-pointer ${
+                    className={`py-2 px-1 rounded-lg font-mono font-bold text-xs border text-center transition-all cursor-pointer ${
                       quickScore === 0
-                        ? 'bg-rose-700 text-white border-rose-700 shadow-xs'
-                        : 'bg-white text-rose-800 border-rose-300 hover:bg-rose-50'
+                        ? 'bg-rose-500/20 text-rose-300 border-rose-500/50'
+                        : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-rose-300'
                     }`}
                   >
-                    Défaite
+                    0
                   </button>
                 </div>
               </div>
 
               {/* Couleur */}
               <div className="lg:col-span-2">
-                <label className="block font-bold text-slate-800 mb-1">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Ma couleur
                 </label>
                 <select
                   value={quickColor}
                   onChange={(e) => setQuickColor(e.target.value as PlayerColor)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                  className="w-full px-2.5 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-semibold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 >
                   <option value="White">Blancs</option>
                   <option value="Black">Noirs</option>
@@ -423,13 +446,13 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
 
               {/* Cadence */}
               <div className="lg:col-span-3">
-                <label className="block font-bold text-slate-800 mb-1">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Cadence
                 </label>
                 <select
                   value={quickCadence}
                   onChange={(e) => setQuickCadence(e.target.value as TimeControlCategory)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                  className="w-full px-2.5 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-semibold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 >
                   <option value="Blitz">Blitz (3m, 5m...)</option>
                   <option value="Rapid">Rapide (10m, 15m...)</option>
@@ -438,14 +461,14 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
               </div>
 
               {/* Session / Libre */}
-              <div className="lg:col-span-4">
-                <label className="block font-bold text-slate-800 mb-1">
+              <div className="lg:col-span-5">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Cadre / Session
                 </label>
                 <select
                   value={quickTournamentId}
                   onChange={(e) => setQuickTournamentId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-semibold"
+                  className="w-full px-2.5 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-semibold text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 >
                   <option value={FREE_GAME_TOURNAMENT_ID}>
                     Partie Libre (Hors tournoi / Soirée club)
@@ -460,283 +483,287 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
 
               {/* Date */}
               <div className="lg:col-span-3">
-                <label className="block font-bold text-slate-800 mb-1">
+                <label className="block font-semibold text-[#CBD5E1] mb-1.5">
                   Date
                 </label>
                 <input
                   type="date"
                   value={quickDate}
                   onChange={(e) => setQuickDate(e.target.value)}
-                  className="w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-md font-mono"
+                  className="w-full px-2.5 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              {/* Bouton de validation rapide */}
-              <div className="lg:col-span-5 flex items-end">
-                <button
+              {/* Lien Chess.com optionnel + Validation iconique */}
+              <div className="lg:col-span-4 flex items-end gap-2">
+                <input
+                  type="url"
+                  value={quickChessComUrl}
+                  onChange={(e) => setQuickChessComUrl(e.target.value)}
+                  placeholder="Lien Chess.com (optionnel)"
+                  className="flex-1 px-2.5 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-[#F1F4F8] placeholder:text-[#6C788B] focus:outline-none focus:border-emerald-500"
+                />
+                <IconButton
                   type="submit"
+                  label={
+                    isQuickSubmitting
+                      ? 'Enregistrement...'
+                      : 'Enregistrer immédiatement la partie amicale'
+                  }
+                  variant="primary"
+                  size="md"
                   disabled={isQuickSubmitting || !quickOpponentName.trim()}
-                  className="w-full py-2 px-4 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 rounded-md transition-colors cursor-pointer shadow-xs flex items-center justify-center gap-2"
                 >
-                  <Zap className="w-3.5 h-3.5" />
-                  {isQuickSubmitting ? 'Enregistrement...' : 'Enregistrer immédiatement la partie amicale'}
-                </button>
+                  <Check className="w-4 h-4" />
+                </IconButton>
               </div>
             </div>
           </form>
         )}
 
-        {/* Barre de sous-navigation de l'espace amical */}
-        <div className="flex flex-wrap items-center gap-1.5 pt-3 border-t border-slate-200">
-          {subNavItems.map((item) => {
-            const Icon = item.icon;
-            const active = subTab === item.id;
-            return (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => {
-                  if (item.id === 'players') setSelectedOpponentId(null);
-                  setSubTab(item.id);
-                }}
-                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-md text-xs font-bold transition-colors cursor-pointer ${
-                  active
-                    ? 'bg-slate-900 text-white'
-                    : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <Icon className="w-3.5 h-3.5" />
-                <span>{item.label}</span>
-                {item.count !== undefined && (
-                  <span
-                    className={`font-mono px-1.5 py-0.5 rounded text-[10px] ${
-                      active
-                        ? 'bg-slate-700 text-slate-100'
-                        : 'bg-white text-slate-700 border border-slate-200'
-                    }`}
-                  >
-                    {item.count}
-                  </span>
-                )}
-              </button>
-            );
-          })}
+        {/* Barre de sous-navigation purement iconique */}
+        <div className="flex items-center justify-between pt-3 border-t border-[#232C3A]">
+          <div className="flex items-center gap-2">
+            {subNavItems.map((item) => {
+              const Icon = item.icon;
+              const active = subTab === item.id;
+              return (
+                <IconButton
+                  key={item.id}
+                  label={item.label}
+                  variant={active ? 'active' : 'surface'}
+                  size="md"
+                  tooltipPos="bottom"
+                  badge={item.count !== undefined && item.count > 0 ? item.count : undefined}
+                  onClick={() => {
+                    if (item.id === 'players') setSelectedOpponentId(null);
+                    setSubTab(item.id);
+                  }}
+                >
+                  <Icon className="w-4 h-4" />
+                </IconButton>
+              );
+            })}
+          </div>
+          <span className="text-xs font-mono text-[#9BA7B8] hidden sm:inline">
+            {subNavItems.find((i) => i.id === subTab)?.label}
+          </span>
         </div>
       </div>
 
       {/* Bannière d'initialisation si le Bin Amical est vide */}
       {games.length === 0 && tournaments.length === 0 && opponents.length === 0 && (
-        <div className="bg-white border border-slate-300 rounded-lg p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4 shadow-2xs">
+        <div className="bg-[#131820] border border-[#2B3647] rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1 max-w-2xl">
-            <h2 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-slate-700" />
+            <h2 className="text-sm font-bold text-[#F1F4F8] flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-400" />
               Base JSONBin Amicale ({friendlyStatus.binId}) prête
             </h2>
-            <p className="text-xs text-slate-600">
-              Vous pouvez initialiser une structure vide sur ce JSONBin, charger des données d’exemple, ou saisir directement une partie amicale libre.
+            <p className="text-xs text-[#9BA7B8]">
+              Initialisez un Bin vide ou chargez un jeu d’exemple pour démarrer immédiatement.
             </p>
           </div>
-          <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-            <button
-              type="button"
+          <div className="flex items-center gap-2 shrink-0">
+            <IconButton
+              label="Initialiser le Bin vide"
+              variant="surface"
+              size="md"
+              disabled={isSyncingFriendly}
               onClick={onInitializeEmptyFriendlyBin}
-              disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-slate-800 bg-slate-50 hover:bg-slate-100 border border-slate-300 rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
-              <Database className="w-3.5 h-3.5 text-slate-600" />
-              Initialiser Bin vide
-            </button>
-            <button
-              type="button"
+              <Database className="w-4 h-4" />
+            </IconButton>
+            <IconButton
+              label="Charger des données d'exemple"
+              variant="gold"
+              size="md"
+              disabled={isSyncingFriendly}
               onClick={onLoadSampleFriendlyData}
-              disabled={isSyncingFriendly}
-              className="inline-flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 rounded-md transition-colors cursor-pointer disabled:opacity-50"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Charger un exemple
-            </button>
+              <Sparkles className="w-4 h-4" />
+            </IconButton>
           </div>
         </div>
       )}
 
       {/* SOUS-ONGLET 1 : VUE D'ENSEMBLE AMICALE */}
       {subTab === 'overview' && (
-        <div className="space-y-5">
-          {/* Chiffres Clés Amicaux (Sans Elo Gagné) */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 font-mono tabular-nums">
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+        <div className="space-y-6">
+          {/* Chiffres Clés Amicaux */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 font-mono tabular-nums">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
                 Total Parties
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-[#F1F4F8] mt-1">
                 {stats.total}
               </div>
-              <div className="text-[11px] font-sans text-slate-500 mt-1">
+              <div className="text-[11px] font-sans text-[#9BA7B8] mt-1">
                 Dont {stats.freeGamesCount} libre(s)
               </div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
-                Taux de Victoires
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
+                Victoires
               </div>
-              <div className="text-2xl font-bold text-emerald-700 mt-1">
+              <div className="text-2xl font-bold text-emerald-400 mt-1">
                 {stats.winPct}%
               </div>
-              <div className="text-[11px] font-semibold text-slate-600 mt-1">
+              <div className="text-[11px] text-[#9BA7B8] mt-1">
                 +{stats.wins}V · ={stats.draws}N · -{stats.losses}D
               </div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
-                Joueurs Affrontés
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
+                Joueurs
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-[#F1F4F8] mt-1">
                 {opponents.length}
               </div>
-              <div className="text-[11px] font-sans text-slate-500 mt-1">
+              <div className="text-[11px] font-sans text-[#9BA7B8] mt-1">
                 Répertoire isolé
               </div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
                 Classique
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-emerald-400 mt-1">
                 {stats.stdGames}
               </div>
-              <div className="text-[11px] font-sans text-slate-500 mt-1">
+              <div className="text-[11px] font-sans text-[#9BA7B8] mt-1">
                 Sans impact Elo
               </div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
                 Rapide
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-[#D4A853] mt-1">
                 {stats.rapidGames}
               </div>
-              <div className="text-[11px] font-sans text-slate-500 mt-1">
+              <div className="text-[11px] font-sans text-[#9BA7B8] mt-1">
                 Sans impact Elo
               </div>
             </div>
 
-            <div className="p-4 bg-white border border-slate-200 rounded-lg shadow-2xs">
-              <div className="text-[11px] font-sans font-bold uppercase tracking-wider text-slate-500">
+            <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-2xl">
+              <div className="text-[11px] font-sans font-semibold uppercase tracking-wider text-[#6C788B]">
                 Blitz
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-1">
+              <div className="text-2xl font-bold text-sky-400 mt-1">
                 {stats.blitzGames}
               </div>
-              <div className="text-[11px] font-sans text-slate-500 mt-1">
+              <div className="text-[11px] font-sans text-[#9BA7B8] mt-1">
                 Sans impact Elo
               </div>
             </div>
           </div>
 
           {/* Répartition détaillée par Cadence : Classique, Rapide, Blitz */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900">Classique (Standard)</span>
-                <span className="text-[11px] font-mono font-bold text-slate-500">
+                <span className="text-xs font-bold text-[#F1F4F8]">Classique (Standard)</span>
+                <span className="text-[11px] font-mono text-[#6C788B]">
                   {cadenceBreakdown.standard.total} partie(s)
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-emerald-700">
+                <span className="text-xl font-bold font-mono tabular-nums text-emerald-400">
                   {cadenceBreakdown.standard.winRate}% victoires
                 </span>
-                <span className="text-[11px] font-mono text-slate-600">
+                <span className="text-[11px] font-mono text-[#9BA7B8]">
                   +{cadenceBreakdown.standard.wins} · ={cadenceBreakdown.standard.draws} · -{cadenceBreakdown.standard.losses}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div className="w-full bg-[#19202B] rounded-full h-1.5 overflow-hidden flex">
                 <div
-                  className="bg-emerald-600 h-full"
+                  className="bg-emerald-500 h-full"
                   style={{ width: `${cadenceBreakdown.standard.winRate}%` }}
                 />
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+            <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900">Rapide</span>
-                <span className="text-[11px] font-mono font-bold text-slate-500">
+                <span className="text-xs font-bold text-[#F1F4F8]">Rapide</span>
+                <span className="text-[11px] font-mono text-[#6C788B]">
                   {cadenceBreakdown.rapid.total} partie(s)
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-emerald-700">
+                <span className="text-xl font-bold font-mono tabular-nums text-[#D4A853]">
                   {cadenceBreakdown.rapid.winRate}% victoires
                 </span>
-                <span className="text-[11px] font-mono text-slate-600">
+                <span className="text-[11px] font-mono text-[#9BA7B8]">
                   +{cadenceBreakdown.rapid.wins} · ={cadenceBreakdown.rapid.draws} · -{cadenceBreakdown.rapid.losses}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div className="w-full bg-[#19202B] rounded-full h-1.5 overflow-hidden flex">
                 <div
-                  className="bg-emerald-600 h-full"
+                  className="bg-[#D4A853] h-full"
                   style={{ width: `${cadenceBreakdown.rapid.winRate}%` }}
                 />
               </div>
             </div>
 
-            <div className="bg-white border border-slate-200 rounded-lg p-4 shadow-2xs space-y-2">
+            <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-4 space-y-2.5">
               <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-900">Blitz</span>
-                <span className="text-[11px] font-mono font-bold text-slate-500">
+                <span className="text-xs font-bold text-[#F1F4F8]">Blitz</span>
+                <span className="text-[11px] font-mono text-[#6C788B]">
                   {cadenceBreakdown.blitz.total} partie(s)
                 </span>
               </div>
               <div className="flex items-baseline justify-between">
-                <span className="text-xl font-bold font-mono text-emerald-700">
+                <span className="text-xl font-bold font-mono tabular-nums text-sky-400">
                   {cadenceBreakdown.blitz.winRate}% victoires
                 </span>
-                <span className="text-[11px] font-mono text-slate-600">
+                <span className="text-[11px] font-mono text-[#9BA7B8]">
                   +{cadenceBreakdown.blitz.wins} · ={cadenceBreakdown.blitz.draws} · -{cadenceBreakdown.blitz.losses}
                 </span>
               </div>
-              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden flex">
+              <div className="w-full bg-[#19202B] rounded-full h-1.5 overflow-hidden flex">
                 <div
-                  className="bg-emerald-600 h-full"
+                  className="bg-sky-400 h-full"
                   style={{ width: `${cadenceBreakdown.blitz.winRate}%` }}
                 />
               </div>
             </div>
           </div>
 
-          {/* Grille : Dernières Parties Amicales (Libres ou Sessions) & Joueurs Affrontés */}
+          {/* Grille : Dernières Parties Amicales & Joueurs Affrontés */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
             {/* Dernières Parties Amicales */}
-            <div className="lg:col-span-7 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
-              <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                  <Swords className="w-4 h-4 text-slate-600" />
+            <div className="lg:col-span-7 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A] flex items-center justify-between">
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#F1F4F8] flex items-center gap-2">
+                  <Swords className="w-4 h-4 text-emerald-400" />
                   Dernières Parties Amicales ({games.length})
                 </h3>
-                <button
-                  type="button"
+                <IconButton
+                  label="Voir toutes les parties amicales"
+                  variant="ghost"
+                  size="xs"
                   onClick={() => {
                     setSelectedTournamentFilter('');
                     setSubTab('games');
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                 >
-                  Ajouter / Voir tout
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
+                  <ArrowUpRight className="w-4 h-4" />
+                </IconButton>
               </div>
 
               {games.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500">
+                <div className="p-8 text-center text-xs text-[#6C788B]">
                   Aucune partie amicale enregistrée.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-200 text-xs">
+                <div className="divide-y divide-[#232C3A] text-xs">
                   {games
                     .slice()
                     .sort((a, b) => b.datePlayed.localeCompare(a.datePlayed))
@@ -759,23 +786,27 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                             setInspectedGame(g);
                             setSubTab('games');
                           }}
-                          className="p-3.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
+                          className="p-4 hover:bg-[#19202B] cursor-pointer flex items-center justify-between gap-4 transition-colors"
                         >
-                          <div>
-                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                              <span>
+                          <div className="min-w-0">
+                            <div className="font-semibold text-[#F1F4F8] flex items-center gap-2 flex-wrap">
+                              <FederationFlag
+                                code={g.opponentFederation || 'FRA'}
+                                size="xs"
+                              />
+                              <span className="truncate">
                                 vs {formatPlayerNameLastFirst(g.opponentName)}
                               </span>
                               {uncertain && (
-                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
+                                <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-[#D4A853]/15 text-[#D4A853] border border-[#D4A853]/30 rounded">
                                   ?
                                 </span>
                               )}
-                              <span className="font-mono text-slate-500 font-normal">
-                                (Elo : {g.opponentEloUnknown ? '?' : g.opponentElo})
+                              <span className="font-mono text-[#6C788B] font-normal">
+                                ({g.opponentEloUnknown ? '?' : g.opponentElo})
                               </span>
                             </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
+                            <div className="text-[11px] text-[#9BA7B8] mt-1 font-mono">
                               {g.datePlayed} ·{' '}
                               {isFree
                                 ? 'Partie libre (Hors tournoi)'
@@ -786,10 +817,10 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                             <span
                               className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
                                 g.playerScore === 1
-                                  ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30'
                                   : g.playerScore === 0
-                                  ? 'bg-rose-50 text-rose-800 border-rose-200'
-                                  : 'bg-amber-50 text-amber-800 border-amber-200'
+                                  ? 'bg-rose-500/15 text-rose-300 border-rose-500/30'
+                                  : 'bg-[#D4A853]/15 text-[#D4A853] border-[#D4A853]/30'
                               }`}
                             >
                               {g.playerScore === 1
@@ -798,7 +829,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                                 ? 'Nulle'
                                 : 'Défaite'}
                             </span>
-                            <FileText className="w-3.5 h-3.5 text-slate-400" />
+                            <FileText className="w-3.5 h-3.5 text-[#6C788B]" />
                           </div>
                         </div>
                       );
@@ -808,31 +839,31 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
             </div>
 
             {/* Joueurs Amicaux */}
-            <div className="lg:col-span-5 bg-white border border-slate-200 rounded-lg overflow-hidden shadow-2xs">
-              <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800 flex items-center gap-2">
-                  <Users className="w-4 h-4 text-slate-600" />
+            <div className="lg:col-span-5 bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
+              <div className="px-5 py-3.5 border-b border-[#232C3A] bg-[#0F131A] flex items-center justify-between">
+                <h3 className="text-xs font-mono font-bold uppercase tracking-wider text-[#F1F4F8] flex items-center gap-2">
+                  <Users className="w-4 h-4 text-[#D4A853]" />
                   Joueurs Affrontés ({opponents.length})
                 </h3>
-                <button
-                  type="button"
+                <IconButton
+                  label="Voir le répertoire complet"
+                  variant="ghost"
+                  size="xs"
                   onClick={() => {
                     setSelectedOpponentId(null);
                     setSubTab('players');
                   }}
-                  className="inline-flex items-center gap-1 text-xs font-bold text-slate-800 hover:underline cursor-pointer"
                 >
-                  Répertoire complet
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
+                  <ArrowUpRight className="w-4 h-4" />
+                </IconButton>
               </div>
 
               {opponents.length === 0 ? (
-                <div className="p-8 text-center text-xs text-slate-500">
+                <div className="p-8 text-center text-xs text-[#6C788B]">
                   Aucun joueur amical enregistré.
                 </div>
               ) : (
-                <div className="divide-y divide-slate-200 text-xs">
+                <div className="divide-y divide-[#232C3A] text-xs">
                   {opponents.slice(0, 6).map((opp) => {
                     const oppGames = games.filter(
                       (g) =>
@@ -860,38 +891,44 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                           setSelectedOpponentId(opp.id);
                           setSubTab('players');
                         }}
-                        className="p-3.5 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4 transition-colors"
+                        className="p-4 hover:bg-[#19202B] cursor-pointer flex items-center justify-between gap-4 transition-colors"
                       >
-                        <div>
-                          <div className="font-bold text-slate-900 flex items-center gap-1.5">
-                            <span>{formatPlayerNameLastFirst(opp.name)}</span>
+                        <div className="min-w-0">
+                          <div className="font-semibold text-[#F1F4F8] flex items-center gap-2">
+                            <FederationFlag
+                              code={opp.federation || 'FRA'}
+                              size="xs"
+                            />
+                            <span className="truncate">
+                              {formatPlayerNameLastFirst(opp.name)}
+                            </span>
                             {uncertain && (
-                              <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-amber-50 text-amber-800 border border-amber-300 rounded">
+                              <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold bg-[#D4A853]/15 text-[#D4A853] border border-[#D4A853]/30 rounded">
                                 ?
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] font-mono text-slate-500 mt-0.5">
+                          <div className="text-[11px] font-mono text-[#9BA7B8] mt-1">
                             Std{' '}
-                            {opp.isStandardEloUnknown || opp.isEloUnknown
+                            {isOpponentEloUnknownForCadence(opp, 'Standard')
                               ? '?'
-                              : opp.standardElo || opp.elo}{' '}
+                              : getOpponentEloForCadence(opp, 'Standard')}{' '}
                             · Rap{' '}
-                            {opp.isRapidEloUnknown || opp.isEloUnknown
+                            {isOpponentEloUnknownForCadence(opp, 'Rapid')
                               ? '?'
-                              : opp.rapidElo || opp.elo}{' '}
+                              : getOpponentEloForCadence(opp, 'Rapid')}{' '}
                             · Blz{' '}
-                            {opp.isBlitzEloUnknown || opp.isEloUnknown
+                            {isOpponentEloUnknownForCadence(opp, 'Blitz')
                               ? '?'
-                              : opp.blitzElo || opp.elo}
+                              : getOpponentEloForCadence(opp, 'Blitz')}
                           </div>
                         </div>
                         <div className="text-right font-mono shrink-0">
-                          <div className="font-bold text-slate-900">
-                            {winRate}% victoires
+                          <div className="font-bold text-emerald-400">
+                            {winRate}%
                           </div>
-                          <div className="text-[11px] text-slate-500">
-                            +{wins}V · ={draws}N · -{losses}D
+                          <div className="text-[11px] text-[#6C788B]">
+                            +{wins}V·={draws}N·-{losses}D
                           </div>
                         </div>
                       </div>
@@ -904,7 +941,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         </div>
       )}
 
-      {/* SOUS-ONGLET 2 : PARTIES AMICALES (AVEC PARTIES LIBRES HORS TOURNOI & SANS ELO) */}
+      {/* SOUS-ONGLET 2 : PARTIES AMICALES */}
       {subTab === 'games' && (
         <GamesSection
           games={games}
@@ -926,7 +963,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         />
       )}
 
-      {/* SOUS-ONGLET 3 : SESSIONS & TOURNOIS AMICAUX (SANS GAIN D'ELO) */}
+      {/* SOUS-ONGLET 3 : SESSIONS & TOURNOIS AMICAUX */}
       {subTab === 'tournaments' && (
         <TournamentsSection
           tournaments={tournaments}
@@ -954,7 +991,7 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
         />
       )}
 
-      {/* SOUS-ONGLET 4 : JOUEURS AFFRONTÉS EN AMICAL (SANS GAIN D'ELO) */}
+      {/* SOUS-ONGLET 4 : JOUEURS AFFRONTÉS EN AMICAL */}
       {subTab === 'players' && (
         <PlayersSection
           opponents={opponents}

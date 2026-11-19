@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { AlertTriangle, Clock, Trash2, X } from 'lucide-react';
+import { IconButton } from './IconButton';
 
 export interface DeleteDetailItem {
   label: string;
@@ -64,38 +65,37 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
-      <div className="bg-white border border-rose-200 border-t-4 border-t-rose-600 rounded-2xl max-w-lg w-full p-6 shadow-xl space-y-5 animate-in fade-in zoom-in-95 duration-150">
-        {/* En-tête de la modale */}
-        <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-4">
+    <div className="fixed inset-0 z-60 flex items-center justify-center bg-black/80 backdrop-blur-xs p-4 overflow-y-auto">
+      <div className="bg-[#131820] border border-rose-500/35 rounded-2xl max-w-lg w-full p-6 space-y-5">
+        <div className="flex items-start justify-between gap-3 border-b border-[#232C3A] pb-4">
           <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-700 flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-400 flex items-center justify-center shrink-0">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-slate-900">{title}</h3>
-              <p className="text-xs text-slate-600 mt-0.5">
-                {subtitle || 'Cette suppression est définitive et mettra à jour votre JSONBin.'}
+              <h3 className="text-base font-bold text-[#F1F4F8] font-display">{title}</h3>
+              <p className="text-xs text-[#9BA7B8] mt-0.5">
+                {subtitle || 'Cette suppression mettra à jour votre JSONBin.'}
               </p>
             </div>
           </div>
-          <button
-            type="button"
+          <IconButton
+            label="Fermer"
+            variant="ghost"
+            size="sm"
             onClick={onCancel}
             disabled={isDeleting}
-            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg"
           >
-            <X className="w-5 h-5" />
-          </button>
+            <X className="w-4 h-4" />
+          </IconButton>
         </div>
 
-        {/* Récapitulatif détaillé de la donnée / ensemble de données à supprimer */}
-        <div className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-          <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-rose-700">
+        <div className="p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-3">
+          <div className="flex items-center justify-between border-b border-[#232C3A] pb-2">
+            <span className="text-xs font-semibold text-rose-400">
               Élément ciblé
             </span>
-            <span className="text-xs font-extrabold text-slate-900 text-right">
+            <span className="text-xs font-bold text-[#F1F4F8] text-right">
               {itemName}
             </span>
           </div>
@@ -105,10 +105,10 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
               {details.map((d, idx) => (
                 <div
                   key={idx}
-                  className="p-2 bg-white border border-slate-200/80 rounded-lg flex flex-col justify-between"
+                  className="p-2.5 bg-[#131820] border border-[#232C3A] rounded-lg flex flex-col justify-between"
                 >
-                  <span className="text-[11px] text-slate-500 font-medium">{d.label}</span>
-                  <span className="font-mono font-bold text-slate-900 mt-0.5">{d.value}</span>
+                  <span className="text-[11px] text-[#9BA7B8]">{d.label}</span>
+                  <span className="font-mono font-semibold text-[#F1F4F8] mt-0.5">{d.value}</span>
                 </div>
               ))}
             </div>
@@ -116,61 +116,55 @@ export const ConfirmDeleteModal: React.FC<ConfirmDeleteModalProps> = ({
         </div>
 
         {warningMessage && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-900 flex items-start gap-2">
-            <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+          <div className="p-3 bg-rose-500/10 border border-rose-500/25 rounded-xl text-xs font-medium text-rose-300 flex items-start gap-2">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
             <span>{warningMessage}</span>
           </div>
         )}
 
-        {/* Barre de sécurité de 3 secondes */}
         <div className="space-y-1.5">
           <div className="flex items-center justify-between text-xs">
-            <span className="inline-flex items-center gap-1.5 font-semibold text-slate-600">
-              <Clock className="w-3.5 h-3.5 text-rose-600" />
-              Sécurité anti-erreur :
+            <span className="inline-flex items-center gap-1.5 text-[#9BA7B8]">
+              <Clock className="w-3.5 h-3.5 text-rose-400" />
+              Sécurité anti-erreur
             </span>
-            <span className="font-mono font-bold text-rose-700">
-              {secondsLeft > 0
-                ? `Déverrouillage dans ${secondsLeft}s...`
-                : 'Bouton déverrouillé — Prêt à confirmer'}
+            <span className="font-mono font-semibold text-rose-300">
+              {secondsLeft > 0 ? `${secondsLeft}s` : 'Prêt'}
             </span>
           </div>
-          <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
+          <div className="w-full h-1.5 bg-[#19202B] rounded-full overflow-hidden">
             <div
               style={{ width: `${((3 - secondsLeft) / 3) * 100}%` }}
-              className="h-full bg-rose-600 transition-all duration-700"
+              className="h-full bg-rose-500 transition-all duration-700"
             />
           </div>
         </div>
 
-        {/* Boutons d'action */}
-        <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
-          <button
-            type="button"
+        <div className="flex items-center justify-end gap-2 pt-2 border-t border-[#232C3A]">
+          <IconButton
+            label="Annuler"
+            variant="surface"
             onClick={onCancel}
             disabled={isDeleting}
-            className="px-4 py-2.5 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors cursor-pointer"
           >
-            Annuler
-          </button>
+            <X className="w-4 h-4" />
+          </IconButton>
 
-          <button
-            type="button"
+          <IconButton
+            label={
+              isDeleting
+                ? 'Suppression en cours...'
+                : secondsLeft > 0
+                ? `Déverrouillage dans ${secondsLeft}s`
+                : 'Confirmer la suppression définitive'
+            }
+            variant="danger"
             onClick={handleConfirmClick}
             disabled={secondsLeft > 0 || isDeleting}
-            className={`inline-flex items-center gap-2 px-5 py-2.5 text-xs font-extrabold rounded-xl transition-all ${
-              secondsLeft > 0 || isDeleting
-                ? 'bg-slate-200 text-slate-500 cursor-not-allowed'
-                : 'bg-rose-600 text-white hover:bg-rose-700 shadow-sm cursor-pointer'
-            }`}
+            className="w-11"
           >
             <Trash2 className="w-4 h-4" />
-            {isDeleting
-              ? 'Suppression en cours...'
-              : secondsLeft > 0
-              ? `Confirmer la suppression (${secondsLeft}s)`
-              : 'Confirmer la suppression définitive'}
-          </button>
+          </IconButton>
         </div>
       </div>
     </div>

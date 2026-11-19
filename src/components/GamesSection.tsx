@@ -1,6 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ArrowLeft,
+  ArrowRight,
   Check,
+  ClipboardPaste,
   Copy,
   Edit3,
   ExternalLink,
@@ -14,8 +17,8 @@ import {
   Swords,
   Trash2,
   Trophy,
+  Unlink,
   UserCheck,
-  UserPlus,
   X,
 } from 'lucide-react';
 import {
@@ -48,6 +51,7 @@ import {
 import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { FederationFlag } from './FederationFlag';
+import { IconButton } from './IconButton';
 
 interface GamesSectionProps {
   games: FideGame[];
@@ -97,6 +101,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [copiedPgnId, setCopiedPgnId] = useState<string | null>(null);
   const [gameToDelete, setGameToDelete] = useState<FideGame | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   // Modal d'ajout/édition de partie
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -473,71 +478,79 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
     }
   };
 
+  const inputClass =
+    'w-full px-3 py-2 text-xs bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8] placeholder-[#6C788B] focus:outline-none focus:border-emerald-500 transition-colors';
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+      <div className="flex items-center justify-between gap-4 border-b border-[#232C3A] pb-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">
+          <h1 className="font-display text-xl font-bold tracking-tight text-[#F1F4F8]">
             {isFriendlyMode ? 'Parties Amicales' : 'Registre des Parties'}
           </h1>
-          <p className="text-sm text-slate-600 mt-1">
+          <p className="text-xs text-[#9BA7B8] mt-1">
             {isFriendlyMode
               ? 'Parties libres (hors tournoi) ou rattachées à une session amicale, sans variation Elo.'
               : 'Historique de vos rondes homologuées et notation PGN copiable.'}
           </p>
         </div>
-        <button
-          type="button"
-          onClick={openNewGameModal}
-          className="inline-flex items-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 transition-colors whitespace-nowrap cursor-pointer"
+
+        <IconButton
+          variant="primary"
+          size="lg"
+          label={
+            isFriendlyMode
+              ? 'Ajouter une partie amicale'
+              : 'Ajouter une nouvelle partie'
+          }
+          onClick={() => {
+            setStepError(null);
+            openNewGameModal();
+          }}
         >
-          <Plus className="w-4 h-4" />
-          {isFriendlyMode
-            ? 'Ajouter une partie amicale (libre ou session)'
-            : 'Ajouter une partie'}
-        </button>
+          <Plus className="w-5 h-5" />
+        </IconButton>
       </div>
 
       {/* Filtre par tournoi / parties libres */}
-      <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-4">
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-[#9BA7B8]">
             Filtrer par cadre ou tournoi
           </div>
 
           <div className="relative w-full sm:w-72">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <Search className="w-4 h-4 text-[#6C788B] absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher un adversaire, une ouverture..."
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-300 rounded-lg focus:outline-none focus:bg-white focus:border-slate-900"
+              placeholder="Adversaire, ouverture, ID..."
+              className={`${inputClass} pl-9`}
             />
           </div>
         </div>
 
-        {/* Menu déroulant de filtre des tournois classé du plus récent au plus vieux */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="relative flex-1">
             <select
               value={selectedTournamentFilter}
               onChange={(e) => onSelectTournamentFilter(e.target.value)}
-              className="w-full px-3.5 py-2 text-xs font-semibold bg-slate-50 border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:bg-white focus:border-slate-900"
+              className={`${inputClass} cursor-pointer`}
             >
               <option value="">
                 Toutes les parties enregistrées ({games.length})
               </option>
               {(isFriendlyMode || freeGamesCount > 0) && (
                 <option value={FREE_GAME_TOURNAMENT_ID}>
-                  ⚡ Parties libres / Hors tournoi ({freeGamesCount})
+                  Parties libres / Hors tournoi ({freeGamesCount})
                 </option>
               )}
               {chronologicallySortedTournaments.map((t) => {
                 const count = games.filter((g) => g.tournamentId === t.id).length;
                 return (
                   <option key={t.id} value={t.id}>
-                    📅 [{t.startDate}] · {t.name} ({count} partie{count > 1 ? 's' : ''} · {t.timeControl})
+                    [{t.startDate}] · {t.name} ({count} partie{count > 1 ? 's' : ''} · {t.timeControl})
                   </option>
                 );
               })}
@@ -545,32 +558,31 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
           </div>
 
           {selectedTournamentFilter && (
-            <button
-              type="button"
+            <IconButton
+              variant="danger"
+              size="md"
+              label="Réinitialiser le filtre"
               onClick={() => onSelectTournamentFilter('')}
-              className="px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg cursor-pointer flex items-center gap-1.5 shrink-0"
-              title="Afficher toutes les parties"
             >
-              <X className="w-3.5 h-3.5 text-slate-500" />
-              Réinitialiser le filtre
-            </button>
+              <RotateCcw className="w-4 h-4" />
+            </IconButton>
           )}
         </div>
 
-        {/* Résumé sobre */}
-        <div className="pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-600">
+        {/* Résumé */}
+        <div className="pt-3 border-t border-[#232C3A] flex flex-wrap items-center justify-between gap-4 text-xs text-[#9BA7B8]">
           <div>
             {selectedTournamentFilter === FREE_GAME_TOURNAMENT_ID ? (
               <span>
                 Sélection :{' '}
-                <strong className="text-slate-900">
+                <strong className="text-[#F1F4F8]">
                   Parties libres (Hors tournoi)
                 </strong>
               </span>
             ) : activeTournament ? (
               <span>
                 Sélection :{' '}
-                <strong className="text-slate-900">
+                <strong className="text-[#F1F4F8]">
                   {activeTournament.name}
                 </strong>{' '}
                 ({activeTournament.location})
@@ -580,30 +592,32 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-4 font-mono tabular-nums text-slate-800">
+          <div className="flex flex-wrap items-center gap-4 font-mono tabular-nums text-[#CBD5E1]">
             <span>
               Score :{' '}
-              <strong className="text-slate-900">
+              <strong className="text-[#F1F4F8]">
                 {summary.score} / {summary.count}
               </strong>
             </span>
             {!isFriendlyMode && (
               <>
-                <span aria-hidden="true">·</span>
+                <span className="text-[#475569]" aria-hidden="true">
+                  ·
+                </span>
                 <span>
                   Performance :{' '}
-                  <strong className="text-slate-900">
+                  <strong className="text-[#D4A853]">
                     {summary.perf || '—'}
                   </strong>
                 </span>
-                <span aria-hidden="true">·</span>
+                <span className="text-[#475569]" aria-hidden="true">
+                  ·
+                </span>
                 <span>
                   Bilan Elo :{' '}
                   <strong
                     className={
-                      summary.netElo >= 0
-                        ? 'text-emerald-700'
-                        : 'text-rose-700'
+                      summary.netElo >= 0 ? 'text-emerald-400' : 'text-rose-400'
                     }
                   >
                     {summary.netElo >= 0
@@ -617,39 +631,45 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         </div>
       </div>
 
-      {/* Tableau professionnel des Parties */}
-      <div className="bg-white border border-slate-200 rounded-xl overflow-hidden">
+      {/* Tableau des Parties */}
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl overflow-hidden">
         {filteredGames.length === 0 ? (
-          <div className="p-12 text-center space-y-3">
-            <p className="text-sm font-semibold text-slate-900">
+          <div className="p-12 text-center space-y-4">
+            <Swords className="w-8 h-8 text-emerald-400 mx-auto opacity-80" />
+            <p className="text-sm font-semibold text-[#F1F4F8]">
               Aucune partie enregistrée pour cette sélection.
             </p>
-            <button
-              type="button"
-              onClick={openNewGameModal}
-              className="inline-flex items-center gap-2 px-4 py-2 text-xs font-semibold text-white bg-slate-900 rounded-lg hover:bg-slate-800 cursor-pointer"
-            >
-              <Plus className="w-4 h-4" />
-              Ajouter une partie
-            </button>
+            <div className="flex justify-center">
+              <IconButton
+                variant="primary"
+                size="lg"
+                label="Ajouter une partie"
+                onClick={() => {
+                  setStepError(null);
+                  openNewGameModal();
+                }}
+              >
+                <Plus className="w-5 h-5" />
+              </IconButton>
+            </div>
           </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-xs font-semibold text-slate-600">
+                <tr className="border-b border-[#232C3A] bg-[#19202B]/70 text-[11px] font-bold uppercase tracking-wider text-[#9BA7B8]">
                   <th className="py-3 px-4">Date & Ronde</th>
-                  <th className="py-3 px-4">Adversaire (NOM, Prénom)</th>
+                  <th className="py-3 px-4">Adversaire</th>
                   <th className="py-3 px-4 text-right">Elo Adv.</th>
                   <th className="py-3 px-4">Couleur</th>
                   <th className="py-3 px-4 text-center">Résultat</th>
                   {!isFriendlyMode && (
-                    <th className="py-3 px-4 text-right">Variation Elo</th>
+                    <th className="py-3 px-4 text-right">Variation</th>
                   )}
-                  <th className="py-3 px-4 text-right">Fiche & PGN</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-200 text-sm">
+              <tbody className="divide-y divide-[#232C3A] text-xs">
                 {filteredGames.map((g) => {
                   const displayOppName = formatPlayerNameLastFirst(
                     g.opponentName,
@@ -667,13 +687,13 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     <tr
                       key={g.id}
                       onClick={() => onSetInspectedGame(g)}
-                      className="cursor-pointer transition-colors hover:bg-slate-50"
+                      className="cursor-pointer transition-colors hover:bg-[#19202B]"
                     >
-                      <td className="py-3 px-4 font-mono text-xs whitespace-nowrap">
-                        <div className="font-semibold text-slate-900">
+                      <td className="py-3.5 px-4 font-mono whitespace-nowrap">
+                        <div className="font-semibold text-[#F1F4F8]">
                           {g.datePlayed}
                         </div>
-                        <div className="text-slate-500">
+                        <div className="text-[11px] text-[#6C788B]">
                           {isFree ? 'Partie libre' : `Ronde ${g.round}`} ·{' '}
                           {g.timeControl === 'Standard'
                             ? 'Classique'
@@ -683,66 +703,75 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                         </div>
                       </td>
 
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                      <td className="py-3.5 px-4">
+                        <div className="font-semibold text-[#F1F4F8] flex items-center gap-2">
                           <FederationFlag
                             code={g.opponentFederation || 'FRA'}
                             size="xs"
                           />
+                          {g.opponentTitle !== 'None' && (
+                            <span className="font-mono text-[10px] font-bold text-[#D4A853]">
+                              {g.opponentTitle}
+                            </span>
+                          )}
                           <span>{displayOppName}</span>
                         </div>
-                        <div className="text-xs text-slate-500">
+                        <div className="text-[11px] text-[#6C788B] mt-0.5">
                           {isFree
                             ? FREE_GAME_TOURNAMENT_NAME
                             : g.tournamentName}
                         </div>
                       </td>
 
-                      <td className="py-3 px-4 text-right font-mono tabular-nums font-semibold text-slate-900">
-                        {displayOppElo}
+                      <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold text-[#F1F4F8]">
+                        {displayOppElo === '?' ? (
+                          <span className="text-[#D4A853]">?</span>
+                        ) : (
+                          displayOppElo
+                        )}
                       </td>
 
-                      <td className="py-3 px-4 text-xs font-medium text-slate-700">
+                      <td className="py-3.5 px-4 font-medium text-[#CBD5E1]">
                         <span className="inline-flex items-center gap-1.5">
                           <span
                             className={`w-2.5 h-2.5 rounded-xs border ${
                               g.playerColor === 'White'
-                                ? 'bg-white border-slate-400'
-                                : 'bg-slate-900 border-slate-900'
+                                ? 'bg-[#F1F4F8] border-[#CBD5E1]'
+                                : 'bg-[#0B0E12] border-[#475569]'
                             }`}
                           />
                           {g.playerColor === 'White' ? 'Blancs' : 'Noirs'}
                         </span>
                       </td>
 
-                      <td className="py-3 px-4 text-center font-mono text-xs font-semibold">
+                      <td className="py-3.5 px-4 text-center font-mono font-bold">
                         <span
                           className={
                             g.playerScore === 1
-                              ? 'text-emerald-700'
+                              ? 'text-emerald-400'
                               : g.playerScore === 0
-                              ? 'text-rose-700'
-                              : 'text-amber-700'
+                              ? 'text-rose-400'
+                              : 'text-[#D4A853]'
                           }
                         >
                           {g.playerScore === 1
-                            ? 'Victoire'
+                            ? '1 · Victoire'
                             : g.playerScore === 0.5
-                            ? 'Nulle'
-                            : 'Défaite'}
+                            ? '½ · Nulle'
+                            : '0 · Défaite'}
                         </span>
                       </td>
 
                       {!isFriendlyMode && (
-                        <td className="py-3 px-4 text-right font-mono tabular-nums font-semibold">
+                        <td className="py-3.5 px-4 text-right font-mono tabular-nums font-bold">
                           {g.opponentEloUnknown || g.opponentElo <= 0 ? (
-                            <span className="text-slate-400">—</span>
+                            <span className="text-[#6C788B]">—</span>
                           ) : (
                             <span
                               className={
                                 g.eloChange >= 0
-                                  ? 'text-emerald-700'
-                                  : 'text-rose-700'
+                                  ? 'text-emerald-400'
+                                  : 'text-rose-400'
                               }
                             >
                               {g.eloChange >= 0
@@ -754,36 +783,39 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       )}
 
                       <td
-                        className="py-3 px-4 text-right whitespace-nowrap"
+                        className="py-3.5 px-4 text-right whitespace-nowrap"
                         onClick={(e) => e.stopPropagation()}
                       >
                         <div className="inline-flex items-center gap-1.5">
-                          <button
-                            type="button"
+                          <IconButton
+                            variant="surface"
+                            size="sm"
+                            label="Infos & Notation PGN"
                             onClick={() => onSetInspectedGame(g)}
-                            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-800 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
                           >
-                            <Info className="w-3.5 h-3.5 text-slate-600" />
-                            Infos & PGN
-                          </button>
+                            <Info className="w-3.5 h-3.5" />
+                          </IconButton>
 
-                          <button
-                            type="button"
-                            onClick={() => openEditGameModal(g)}
-                            className="p-1.5 text-slate-500 hover:text-slate-900 rounded-lg hover:bg-slate-100 cursor-pointer"
-                            title="Modifier la partie"
+                          <IconButton
+                            variant="ghost"
+                            size="sm"
+                            label="Modifier la partie"
+                            onClick={() => {
+                              setStepError(null);
+                              openEditGameModal(g);
+                            }}
                           >
                             <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          </IconButton>
 
-                          <button
-                            type="button"
+                          <IconButton
+                            variant="danger"
+                            size="sm"
+                            label="Supprimer la partie"
                             onClick={() => setGameToDelete(g)}
-                            className="p-1.5 text-slate-500 hover:text-rose-700 rounded-lg hover:bg-rose-50 cursor-pointer"
-                            title="Supprimer la partie"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </IconButton>
                         </div>
                       </td>
                     </tr>
@@ -795,77 +827,85 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         )}
       </div>
 
-      {/* MODALE DÉTAILS DE LA PARTIE & NOTATION PGN COPIABLE (SANS ÉCHIQUIER VISUEL) */}
+      {/* MODALE DÉTAILS DE LA PARTIE & NOTATION PGN COPIABLE */}
       {inspectedGame && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-lg">
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-[#131820] border border-[#2B3647] rounded-2xl max-w-3xl w-full p-6 space-y-5 max-h-[92vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#232C3A] pb-4">
               <div>
-                <div className="text-xs font-mono text-slate-500">
+                <div className="text-xs font-mono text-[#9BA7B8]">
                   {inspectedGame.tournamentId === FREE_GAME_TOURNAMENT_ID
                     ? FREE_GAME_TOURNAMENT_NAME
                     : `${inspectedGame.tournamentName} · Ronde ${inspectedGame.round}`}{' '}
                   · {inspectedGame.datePlayed}
                 </div>
-                <h2 className="text-xl font-bold text-slate-900 mt-1">
-                  Contre{' '}
-                  {formatPlayerNameLastFirst(
-                    inspectedGame.opponentName,
-                    inspectedGame.opponentNameUncertain
-                  )}{' '}
-                  (Elo :{' '}
-                  {formatEloDisplay(
-                    inspectedGame.opponentElo,
-                    inspectedGame.opponentEloUnknown
-                  )}
-                  )
+                <h2 className="font-display text-xl font-bold text-[#F1F4F8] mt-1 flex items-center gap-2 flex-wrap">
+                  <FederationFlag
+                    code={inspectedGame.opponentFederation || 'FRA'}
+                    size="sm"
+                  />
+                  <span>
+                    Contre{' '}
+                    {formatPlayerNameLastFirst(
+                      inspectedGame.opponentName,
+                      inspectedGame.opponentNameUncertain
+                    )}{' '}
+                    (
+                    {formatEloDisplay(
+                      inspectedGame.opponentElo,
+                      inspectedGame.opponentEloUnknown
+                    )}
+                    )
+                  </span>
                 </h2>
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                <button
-                  type="button"
+              <div className="flex items-center gap-1.5 shrink-0">
+                <IconButton
+                  variant="surface"
+                  size="md"
+                  label="Modifier la partie"
                   onClick={() => {
                     const g = inspectedGame;
                     onSetInspectedGame(null);
+                    setStepError(null);
                     openEditGameModal(g);
                   }}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
                 >
-                  <Edit3 className="w-3.5 h-3.5" />
-                  Modifier
-                </button>
-                <button
-                  type="button"
+                  <Edit3 className="w-4 h-4" />
+                </IconButton>
+                <IconButton
+                  variant="danger"
+                  size="md"
+                  label="Supprimer la partie"
                   onClick={() => setGameToDelete(inspectedGame)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg cursor-pointer"
                 >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Supprimer
-                </button>
-                <button
-                  type="button"
+                  <Trash2 className="w-4 h-4" />
+                </IconButton>
+                <IconButton
+                  variant="ghost"
+                  size="md"
+                  label="Fermer"
                   onClick={() => onSetInspectedGame(null)}
-                  className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg cursor-pointer"
                 >
                   <X className="w-5 h-5" />
-                </button>
+                </IconButton>
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-start">
-              {/* Colonne gauche : Informations de la partie */}
+              {/* Colonne gauche */}
               <div className="md:col-span-5 space-y-4">
                 <div className="grid grid-cols-2 gap-3 text-xs">
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-slate-500 font-medium">Résultat</div>
+                  <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl">
+                    <div className="text-[#9BA7B8] font-medium">Résultat</div>
                     <div
                       className={`text-sm font-mono font-bold mt-0.5 ${
                         inspectedGame.playerScore === 1
-                          ? 'text-emerald-700'
+                          ? 'text-emerald-400'
                           : inspectedGame.playerScore === 0
-                          ? 'text-rose-700'
-                          : 'text-amber-700'
+                          ? 'text-rose-400'
+                          : 'text-[#D4A853]'
                       }`}
                     >
                       {inspectedGame.playerScore === 1
@@ -877,23 +917,23 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   </div>
 
                   {!isFriendlyMode ? (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <div className="text-slate-500 font-medium">
-                        Variation Elo (K={inspectedGame.kFactorUsed})
+                    <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl">
+                      <div className="text-[#9BA7B8] font-medium">
+                        Elo (K={inspectedGame.kFactorUsed})
                       </div>
                       <div
                         className={`text-sm font-mono font-bold mt-0.5 ${
                           inspectedGame.opponentEloUnknown ||
                           inspectedGame.opponentElo <= 0
-                            ? 'text-slate-500'
+                            ? 'text-[#6C788B]'
                             : inspectedGame.eloChange >= 0
-                            ? 'text-emerald-700'
-                            : 'text-rose-700'
+                            ? 'text-emerald-400'
+                            : 'text-rose-400'
                         }`}
                       >
                         {inspectedGame.opponentEloUnknown ||
                         inspectedGame.opponentElo <= 0
-                          ? 'Non calculé (Elo ?)'
+                          ? 'Non calculé'
                           : `${
                               inspectedGame.eloChange >= 0
                                 ? `+${inspectedGame.eloChange.toFixed(1)}`
@@ -902,26 +942,26 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                      <div className="text-slate-500 font-medium">Cadre</div>
-                      <div className="text-sm font-semibold text-slate-900 mt-0.5">
-                        Amical (Sans Elo)
+                    <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl">
+                      <div className="text-[#9BA7B8] font-medium">Cadre</div>
+                      <div className="text-sm font-semibold text-[#F1F4F8] mt-0.5">
+                        Amical
                       </div>
                     </div>
                   )}
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-slate-500 font-medium">Ma Couleur</div>
-                    <div className="font-mono font-semibold text-slate-900 mt-0.5">
+                  <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl">
+                    <div className="text-[#9BA7B8] font-medium">Couleur</div>
+                    <div className="font-mono font-semibold text-[#F1F4F8] mt-0.5">
                       {inspectedGame.playerColor === 'White'
                         ? 'Blancs'
                         : 'Noirs'}
                     </div>
                   </div>
 
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="text-slate-500 font-medium">Cadence</div>
-                    <div className="font-mono font-semibold text-slate-900 mt-0.5">
+                  <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl">
+                    <div className="text-[#9BA7B8] font-medium">Cadence</div>
+                    <div className="font-mono font-semibold text-[#F1F4F8] mt-0.5">
                       {inspectedGame.timeControl === 'Standard'
                         ? 'Classique'
                         : inspectedGame.timeControl === 'Rapid'
@@ -931,15 +971,13 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                   </div>
                 </div>
 
-                {/* Infos sur l'adversaire */}
-                <div className="p-4 bg-slate-50 border border-slate-200 rounded-lg space-y-2 text-xs">
-                  <div className="font-semibold text-slate-900">
-                    Adversaire
-                  </div>
-                  <div className="space-y-1 text-slate-600 font-mono">
+                {/* Infos adversaire */}
+                <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl space-y-2 text-xs">
+                  <div className="font-semibold text-[#F1F4F8]">Adversaire</div>
+                  <div className="space-y-1 text-[#9BA7B8] font-mono">
                     <div>
                       Nom :{' '}
-                      <strong className="text-slate-900">
+                      <strong className="text-[#F1F4F8]">
                         {formatPlayerNameLastFirst(
                           inspectedGame.opponentName,
                           inspectedGame.opponentNameUncertain
@@ -948,7 +986,7 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     </div>
                     <div>
                       Elo :{' '}
-                      <strong className="text-slate-900">
+                      <strong className="text-[#F1F4F8]">
                         {formatEloDisplay(
                           inspectedGame.opponentElo,
                           inspectedGame.opponentEloUnknown
@@ -972,26 +1010,29 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                     </div>
                   </div>
                   {findOpponentRecordId(inspectedGame) && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const oppId = findOpponentRecordId(inspectedGame);
-                        if (oppId) {
-                          onSetInspectedGame(null);
-                          onSelectOpponentProfile(oppId);
-                        }
-                      }}
-                      className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-slate-900 hover:underline cursor-pointer"
-                    >
-                      Voir la fiche complète de ce joueur →
-                    </button>
+                    <div className="pt-1">
+                      <IconButton
+                        variant="surface"
+                        size="sm"
+                        label="Ouvrir la fiche du joueur"
+                        onClick={() => {
+                          const oppId = findOpponentRecordId(inspectedGame);
+                          if (oppId) {
+                            onSetInspectedGame(null);
+                            onSelectOpponentProfile(oppId);
+                          }
+                        }}
+                      >
+                        <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      </IconButton>
+                    </div>
                   )}
                 </div>
 
                 {inspectedGame.openingName && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs">
-                    <div className="font-medium text-slate-500">Ouverture</div>
-                    <div className="font-semibold text-slate-900 mt-0.5">
+                  <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl text-xs">
+                    <div className="font-medium text-[#9BA7B8]">Ouverture</div>
+                    <div className="font-semibold text-[#F1F4F8] mt-0.5">
                       {inspectedGame.ecoCode
                         ? `${inspectedGame.ecoCode} — `
                         : ''}
@@ -1001,49 +1042,55 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 )}
 
                 {inspectedGame.keyMomentNote && (
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs text-slate-700 leading-relaxed">
-                    <div className="font-semibold text-slate-900 mb-1">
+                  <div className="p-3 bg-[#19202B] border border-[#263142] rounded-xl text-xs text-[#CBD5E1] leading-relaxed">
+                    <div className="font-semibold text-[#F1F4F8] mb-1">
                       Notes personnelles
                     </div>
                     {inspectedGame.keyMomentNote}
                   </div>
                 )}
 
-                <button
-                  type="button"
-                  onClick={() => handleAnalyzeOnChessCom(inspectedGame)}
-                  className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Ouvrir l’analyse sur Chess.com
-                </button>
+                <div className="flex items-center gap-2">
+                  <IconButton
+                    variant="gold"
+                    size="md"
+                    label="Ouvrir l’analyse sur Chess.com"
+                    onClick={() => handleAnalyzeOnChessCom(inspectedGame)}
+                  >
+                    <ExternalLink className="w-4 h-4" />
+                  </IconButton>
+                  <span className="text-xs text-[#9BA7B8]">
+                    Analyser sur Chess.com
+                  </span>
+                </div>
               </div>
 
-              {/* Colonne droite : Texte PGN à copier-coller (sans échiquier) */}
+              {/* Colonne droite : Texte PGN */}
               <div className="md:col-span-7 space-y-3">
                 <div className="flex items-center justify-between">
-                  <div className="text-xs font-semibold text-slate-900 flex items-center gap-1.5">
-                    <FileText className="w-4 h-4 text-slate-600" />
-                    Notation PGN (Copier / Coller)
+                  <div className="text-xs font-semibold text-[#F1F4F8] flex items-center gap-1.5">
+                    <FileText className="w-4 h-4 text-[#D4A853]" />
+                    Notation PGN
                   </div>
                   {inspectedGame.pgn && (
-                    <button
-                      type="button"
+                    <IconButton
+                      variant={
+                        copiedPgnId === inspectedGame.id ? 'primary' : 'surface'
+                      }
+                      size="sm"
+                      label={
+                        copiedPgnId === inspectedGame.id
+                          ? 'PGN copié !'
+                          : 'Copier le PGN'
+                      }
                       onClick={() => handleCopyPgnOnly(inspectedGame)}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-900 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition-colors cursor-pointer"
                     >
                       {copiedPgnId === inspectedGame.id ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-700" />
-                          PGN copié !
-                        </>
+                        <Check className="w-3.5 h-3.5" />
                       ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          Copier le PGN
-                        </>
+                        <Copy className="w-3.5 h-3.5" />
                       )}
-                    </button>
+                    </IconButton>
                   )}
                 </div>
 
@@ -1056,32 +1103,35 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                       onClick={(e) =>
                         (e.target as HTMLTextAreaElement).select()
                       }
-                      className="w-full p-4 bg-slate-50 border border-slate-300 rounded-lg font-mono text-xs text-slate-900 leading-relaxed focus:outline-none focus:border-slate-900 select-all"
+                      className="w-full p-4 bg-[#19202B] border border-[#2B3647] rounded-xl font-mono text-xs text-[#F1F4F8] leading-relaxed focus:outline-none focus:border-emerald-500 select-all"
                     />
-                    <p className="text-[11px] text-slate-500">
-                      Cliquez dans la zone ou sur « Copier le PGN » pour copier l’intégralité des coups.
+                    <p className="text-[11px] text-[#6C788B]">
+                      Cliquez dans la zone ou sur l’icône de copie pour copier l’intégralité des coups.
                     </p>
                   </div>
                 ) : (
-                  <div className="p-8 bg-slate-50 border border-dashed border-slate-300 rounded-lg text-center space-y-3">
-                    <p className="text-sm font-semibold text-slate-800">
-                      Aucun PGN enregistré pour cette partie
+                  <div className="p-8 bg-[#19202B]/50 border border-dashed border-[#323E52] rounded-xl text-center space-y-3">
+                    <p className="text-sm font-semibold text-[#CBD5E1]">
+                      Aucun PGN enregistré
                     </p>
-                    <p className="text-xs text-slate-500">
-                      Vous pouvez coller le texte PGN de votre partie à tout moment en modifiant cette fiche.
+                    <p className="text-xs text-[#6C788B]">
+                      Ajoutez le PGN de votre partie en modifiant cette fiche.
                     </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const g = inspectedGame;
-                        onSetInspectedGame(null);
-                        openEditGameModal(g);
-                      }}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-slate-900 bg-white border border-slate-300 rounded-lg hover:bg-slate-100 cursor-pointer"
-                    >
-                      <Edit3 className="w-3.5 h-3.5" />
-                      Coller un PGN pour cette partie
-                    </button>
+                    <div className="flex justify-center">
+                      <IconButton
+                        variant="surface"
+                        size="md"
+                        label="Coller un PGN pour cette partie"
+                        onClick={() => {
+                          const g = inspectedGame;
+                          onSetInspectedGame(null);
+                          setStepError(null);
+                          openEditGameModal(g);
+                        }}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </IconButton>
+                    </div>
                   </div>
                 )}
               </div>
@@ -1090,118 +1140,86 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
         </div>
       )}
 
-      {/* MODAL CRÉATION / ÉDITION D'UNE PARTIE (BEAU, PRATIQUE, COMPLET) */}
+      {/* MODAL CRÉATION / ÉDITION D'UNE PARTIE */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4 overflow-y-auto">
-          <div className="bg-white border border-slate-200 rounded-2xl max-w-3xl w-full p-6 sm:p-7 space-y-6 max-h-[94vh] overflow-y-auto shadow-2xl">
-            {/* En-tête coloré et élégant */}
-            <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-xs p-4 overflow-y-auto">
+          <div className="bg-[#131820] border border-[#2B3647] rounded-2xl max-w-3xl w-full p-6 sm:p-7 space-y-6 max-h-[94vh] overflow-y-auto shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#232C3A] pb-4">
               <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
-                      isFriendlyMode
-                        ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                        : 'bg-blue-100 text-blue-900 border border-blue-200'
-                    }`}
-                  >
-                    <Swords className="w-3.5 h-3.5" />
-                    {isFriendlyMode
-                      ? 'Partie Amicale (Sans impact Elo)'
-                      : 'Partie Homologuée FIDE'}
+                <div className="flex items-center gap-2 text-xs font-mono text-[#9BA7B8]">
+                  <span className="text-emerald-400 font-semibold">
+                    {isFriendlyMode ? 'Partie Amicale' : 'Partie FIDE'}
                   </span>
-                  <span className="text-xs font-mono text-slate-500">
-                    K = {kFactorUsed} · Elo Joueur = {playerElo}
+                  <span className="text-[#475569]">·</span>
+                  <span>
+                    K={kFactorUsed} · Elo {playerElo}
                   </span>
                 </div>
-                <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                  {editingGameId ? 'Modifier la partie' : 'Enregistrer une nouvelle partie'}
+                <h2 className="font-display text-xl font-bold tracking-tight text-[#F1F4F8]">
+                  {editingGameId
+                    ? 'Modifier la partie'
+                    : 'Enregistrer une nouvelle partie'}
                 </h2>
-                <p className="text-xs text-slate-600">
-                  Étape {modalStep} sur 4 · Saisie claire et structurée pas à pas
+                <p className="text-xs text-[#9BA7B8]">
+                  Étape {modalStep} sur 4 · Validation manuelle à la fin
                 </p>
               </div>
-              <button
-                type="button"
+              <IconButton
+                variant="ghost"
+                size="sm"
+                label="Fermer"
                 onClick={() => setIsModalOpen(false)}
-                className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
-              </button>
+                <X className="w-4 h-4" />
+              </IconButton>
             </div>
 
-            {/* Stepper visuel à 4 étapes */}
+            {/* Stepper 4 étapes */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              <button
-                type="button"
-                onClick={() => setModalStep(1)}
-                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
-                  modalStep === 1
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : modalStep > 1
-                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-              >
-                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
-                  Étape 1
-                </div>
-                <div className="text-xs font-bold truncate">Cadre & Cadence</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setModalStep(2)}
-                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
-                  modalStep === 2
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : modalStep > 2
-                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-              >
-                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
-                  Étape 2
-                </div>
-                <div className="text-xs font-bold truncate">Adversaire</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (opponentName.trim() || opponentNameUncertain) setModalStep(3);
-                }}
-                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
-                  modalStep === 3
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : modalStep > 3
-                    ? 'bg-emerald-50 text-emerald-900 border-emerald-300'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-              >
-                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
-                  Étape 3
-                </div>
-                <div className="text-xs font-bold truncate">Résultat & Elo</div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (opponentName.trim() || opponentNameUncertain) setModalStep(4);
-                }}
-                className={`py-2 px-3 rounded-lg text-left border transition-all cursor-pointer ${
-                  modalStep === 4
-                    ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                    : 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-              >
-                <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
-                  Étape 4
-                </div>
-                <div className="text-xs font-bold truncate">Confirmation</div>
-              </button>
+              {[
+                { step: 1, title: 'Cadre & Cadence', unlocked: true },
+                { step: 2, title: 'Adversaire', unlocked: true },
+                {
+                  step: 3,
+                  title: 'Résultat & Elo',
+                  unlocked: Boolean(opponentName.trim() || opponentNameUncertain),
+                },
+                {
+                  step: 4,
+                  title: 'Vérification',
+                  unlocked: Boolean(opponentName.trim() || opponentNameUncertain),
+                },
+              ].map((s) => (
+                <button
+                  key={s.step}
+                  type="button"
+                  onClick={() => {
+                    if (s.unlocked) {
+                      setStepError(null);
+                      setModalStep(s.step as 1 | 2 | 3 | 4);
+                    }
+                  }}
+                  className={`py-2 px-3 rounded-xl text-left border transition-all cursor-pointer ${
+                    modalStep === s.step
+                      ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50'
+                      : modalStep > s.step
+                      ? 'bg-[#19202B] text-[#CBD5E1] border-[#323E52]'
+                      : 'bg-[#0F131A] text-[#6C788B] border-[#232C3A]'
+                  }`}
+                >
+                  <div className="text-[10px] font-mono font-bold uppercase tracking-wider opacity-80">
+                    Étape {s.step}
+                  </div>
+                  <div className="text-xs font-semibold truncate">{s.title}</div>
+                </button>
+              ))}
             </div>
+
+            {stepError && (
+              <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs text-rose-300">
+                {stepError}
+              </div>
+            )}
 
             <form
               onSubmit={(e) => {
@@ -1216,151 +1234,154 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
             >
               {/* ÉTAPE 1 : CADRE, CADENCE & MA COULEUR */}
               {modalStep === 1 && (
-                <div className="space-y-4 pt-1">
-                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <Trophy className="w-3.5 h-3.5 text-blue-600" />
-                      1. Cadre du match, date & cadence
+                <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl space-y-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
+                    <Trophy className="w-3.5 h-3.5 text-[#D4A853]" />
+                    1. Cadre du match, date & cadence
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+                    <div className="sm:col-span-6">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Tournoi ou Session
+                      </label>
+                      <select
+                        value={tournamentId}
+                        onChange={(e) => {
+                          const nextId = e.target.value;
+                          setTournamentId(nextId);
+                          const chosenTourney = tournaments.find(
+                            (t) => t.id === nextId
+                          );
+                          if (chosenTourney) {
+                            setTimeControl(chosenTourney.timeControl);
+                          }
+                          const chosenOp = opponents.find(
+                            (o) => o.id === opponentId
+                          );
+                          if (chosenOp) {
+                            linkOpponentFields(
+                              chosenOp,
+                              nextId,
+                              chosenTourney?.timeControl || timeControl
+                            );
+                          }
+                        }}
+                        className={`${inputClass} bg-[#131820]`}
+                      >
+                        <option value={FREE_GAME_TOURNAMENT_ID}>
+                          Partie libre (Hors tournoi)
+                        </option>
+                        {chronologicallySortedTournaments.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            [{t.startDate}] {t.name} ({t.timeControl})
+                          </option>
+                        ))}
+                      </select>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-                      <div className="sm:col-span-6">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Tournoi ou Session
-                        </label>
-                        <select
-                          value={tournamentId}
-                          onChange={(e) => {
-                            const nextId = e.target.value;
-                            setTournamentId(nextId);
-                            const chosenTourney = tournaments.find((t) => t.id === nextId);
-                            if (chosenTourney) {
-                              setTimeControl(chosenTourney.timeControl);
-                            }
-                            const chosenOp = opponents.find((o) => o.id === opponentId);
-                            if (chosenOp) {
-                              linkOpponentFields(
-                                chosenOp,
-                                nextId,
-                                chosenTourney?.timeControl || timeControl
-                              );
-                            }
-                          }}
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
-                        >
-                          <option value={FREE_GAME_TOURNAMENT_ID}>
-                            ⚡ Partie libre (Hors tournoi / Entraînement)
-                          </option>
-                          {chronologicallySortedTournaments.map((t) => (
-                            <option key={t.id} value={t.id}>
-                              🏆 [{t.startDate}] {t.name} ({t.timeControl})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Cadence
-                        </label>
-                        <select
-                          value={
-                            tournamentId !== FREE_GAME_TOURNAMENT_ID
-                              ? tournaments.find((t) => t.id === tournamentId)
-                                  ?.timeControl || timeControl
-                              : timeControl
+                    <div className="sm:col-span-3">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Cadence
+                      </label>
+                      <select
+                        value={
+                          tournamentId !== FREE_GAME_TOURNAMENT_ID
+                            ? tournaments.find((t) => t.id === tournamentId)
+                                ?.timeControl || timeControl
+                            : timeControl
+                        }
+                        disabled={tournamentId !== FREE_GAME_TOURNAMENT_ID}
+                        onChange={(e) => {
+                          const nextTc = e.target.value as TimeControlCategory;
+                          setTimeControl(nextTc);
+                          const chosenOp = opponents.find(
+                            (o) => o.id === opponentId
+                          );
+                          if (chosenOp) {
+                            linkOpponentFields(chosenOp, tournamentId, nextTc);
                           }
-                          disabled={tournamentId !== FREE_GAME_TOURNAMENT_ID}
-                          onChange={(e) => {
-                            const nextTc = e.target.value as TimeControlCategory;
-                            setTimeControl(nextTc);
-                            const chosenOp = opponents.find((o) => o.id === opponentId);
-                            if (chosenOp) {
-                              linkOpponentFields(chosenOp, tournamentId, nextTc);
-                            }
-                          }}
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold disabled:bg-slate-100 disabled:text-slate-500"
+                        }}
+                        className={`${inputClass} bg-[#131820] disabled:opacity-50`}
+                      >
+                        <option value="Standard">Classique (Standard)</option>
+                        <option value="Rapid">Rapide</option>
+                        <option value="Blitz">Blitz</option>
+                      </select>
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Date jouée
+                      </label>
+                      <input
+                        type="date"
+                        value={datePlayed}
+                        onChange={(e) => setDatePlayed(e.target.value)}
+                        className={`${inputClass} bg-[#131820] font-mono`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        {tournamentId === FREE_GAME_TOURNAMENT_ID
+                          ? 'N° de la partie'
+                          : 'Ronde n°'}
+                      </label>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={round}
+                        onChange={(e) => setRound(Number(e.target.value))}
+                        className={`${inputClass} bg-[#131820] font-mono font-bold`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-8">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Mon Elo lors de la partie
+                      </label>
+                      <input
+                        type="number"
+                        min={600}
+                        max={3500}
+                        value={playerElo}
+                        onChange={(e) => setPlayerElo(Number(e.target.value))}
+                        className={`${inputClass} bg-[#131820] font-mono font-bold`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-12 pt-1">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1.5">
+                        Ma couleur de pièces
+                      </label>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => setPlayerColor('White')}
+                          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border font-bold transition-all cursor-pointer ${
+                            playerColor === 'White'
+                              ? 'bg-[#F1F4F8] text-[#0B0E12] border-white'
+                              : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-white'
+                          }`}
                         >
-                          <option value="Standard">Classique (Standard)</option>
-                          <option value="Rapid">Rapide</option>
-                          <option value="Blitz">Blitz</option>
-                        </select>
-                      </div>
+                          <span className="text-xl leading-none">♔</span>
+                          <span className="text-sm">Blancs</span>
+                        </button>
 
-                      <div className="sm:col-span-3">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Date jouée
-                        </label>
-                        <input
-                          type="date"
-                          value={datePlayed}
-                          onChange={(e) => setDatePlayed(e.target.value)}
-                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-4">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          {tournamentId === FREE_GAME_TOURNAMENT_ID
-                            ? 'N° de la partie'
-                            : 'Ronde n°'}
-                        </label>
-                        <input
-                          type="number"
-                          min={1}
-                          max={50}
-                          value={round}
-                          onChange={(e) => setRound(Number(e.target.value))}
-                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-8">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Mon Elo lors de la partie
-                        </label>
-                        <input
-                          type="number"
-                          min={600}
-                          max={3500}
-                          value={playerElo}
-                          onChange={(e) => setPlayerElo(Number(e.target.value))}
-                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                        />
-                      </div>
-
-                      {/* Choix visuel Blancs / Noirs avec pièces */}
-                      <div className="sm:col-span-12 pt-1">
-                        <label className="block font-semibold text-slate-800 mb-1.5">
-                          Ma couleur de pièces
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                          <button
-                            type="button"
-                            onClick={() => setPlayerColor('White')}
-                            className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border-2 font-bold transition-all cursor-pointer ${
-                              playerColor === 'White'
-                                ? 'bg-white text-slate-950 border-slate-900 ring-2 ring-slate-900/10 shadow-sm'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span className="text-xl leading-none">♔</span>
-                            <span className="text-sm">Blancs (1er coup)</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => setPlayerColor('Black')}
-                            className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border-2 font-bold transition-all cursor-pointer ${
-                              playerColor === 'Black'
-                                ? 'bg-slate-950 text-white border-slate-950 ring-2 ring-slate-950/20 shadow-sm'
-                                : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span className="text-xl leading-none">♚</span>
-                            <span className="text-sm">Noirs (2e coup)</span>
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setPlayerColor('Black')}
+                          className={`flex items-center justify-center gap-2.5 py-3 px-4 rounded-xl border font-bold transition-all cursor-pointer ${
+                            playerColor === 'Black'
+                              ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/60'
+                              : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-white'
+                          }`}
+                        >
+                          <span className="text-xl leading-none">♚</span>
+                          <span className="text-sm">Noirs</span>
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -1369,249 +1390,246 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
               {/* ÉTAPE 2 : ADVERSAIRE & SES INFOS */}
               {modalStep === 2 && (
-                <div className="space-y-4 pt-1">
-                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                        <UserCheck className="w-3.5 h-3.5 text-indigo-600" />
-                        2. Sélection ou saisie de l'adversaire
-                      </div>
-                      {opponentId && (
+                <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl space-y-4">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
+                      <UserCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      2. Adversaire & Fédération
+                    </div>
+                    {opponentId && (
+                      <IconButton
+                        variant="danger"
+                        size="xs"
+                        label="Délier ce joueur"
+                        onClick={() => {
+                          setOpponentId('');
+                          setOpponentName('');
+                          setOpponentNameUncertain(false);
+                          setOpponentFideId('');
+                          setOpponentFfeId('');
+                          setOpponentTitle('None');
+                          setOpponentElo(1600);
+                          setOpponentEloUnknown(false);
+                        }}
+                      >
+                        <Unlink className="w-3.5 h-3.5" />
+                      </IconButton>
+                    )}
+                  </div>
+
+                  {sortedOpponents.length > 0 && (
+                    <div>
+                      <label className="block text-[11px] font-semibold text-[#9BA7B8] mb-1">
+                        Choisir parmi vos adversaires enregistrés (A → Z)
+                      </label>
+                      <select
+                        value={opponentId}
+                        onChange={(e) => {
+                          const found = opponents.find(
+                            (o) => o.id === e.target.value
+                          );
+                          if (found) {
+                            linkOpponentFields(found);
+                          } else {
+                            setOpponentId('');
+                          }
+                        }}
+                        className={`${inputClass} bg-[#131820]`}
+                      >
+                        <option value="">
+                          -- Sélectionner un joueur existant --
+                        </option>
+                        {sortedOpponents.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {formatPlayerNameLastFirst(
+                              o.name,
+                              o.isNameUncertain
+                            )}{' '}
+                            (Std:{' '}
+                            {o.isStandardEloUnknown
+                              ? '?'
+                              : o.standardElo || o.elo}
+                            )
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
+                    <div className="sm:col-span-6">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-[#9BA7B8]">
+                          NOM, Prénom *
+                        </label>
                         <button
                           type="button"
-                          onClick={() => {
-                            setOpponentId('');
-                            setOpponentName('');
-                            setOpponentNameUncertain(false);
-                            setOpponentFideId('');
-                            setOpponentFfeId('');
-                            setOpponentTitle('None');
-                            setOpponentElo(1600);
-                            setOpponentEloUnknown(false);
-                          }}
-                          className="text-[11px] font-semibold text-rose-600 hover:underline cursor-pointer"
+                          onClick={() =>
+                            setOpponentNameUncertain(!opponentNameUncertain)
+                          }
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer ${
+                            opponentNameUncertain
+                              ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/50'
+                              : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647]'
+                          }`}
                         >
-                          Délier ce joueur
+                          <HelpCircle className="w-3 h-3" />?
                         </button>
+                      </div>
+                      <input
+                        type="text"
+                        value={opponentName}
+                        onChange={(e) => {
+                          setOpponentName(e.target.value);
+                          setStepError(null);
+                          const m = opponents.find(
+                            (o) =>
+                              stripQuestionMarkFromName(o.name).toLowerCase() ===
+                              stripQuestionMarkFromName(
+                                e.target.value
+                              ).toLowerCase()
+                          );
+                          if (m) linkOpponentFields(m);
+                        }}
+                        placeholder="Ex: VANDENBERGHE, Lucas"
+                        required={!opponentNameUncertain}
+                        className={`${inputClass} bg-[#131820]`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-[#9BA7B8]">
+                          Son Elo
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setOpponentEloUnknown(!opponentEloUnknown)
+                          }
+                          className={`px-1.5 py-0.5 rounded-lg text-[11px] font-bold border cursor-pointer ${
+                            opponentEloUnknown
+                              ? 'bg-[#D4A853]/20 text-[#D4A853] border-[#D4A853]/50'
+                              : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647]'
+                          }`}
+                        >
+                          ?
+                        </button>
+                      </div>
+                      {opponentEloUnknown ? (
+                        <div className="w-full px-3 py-2 font-mono font-bold bg-[#131820] border border-[#2B3647] text-[#D4A853] rounded-xl text-center">
+                          ?
+                        </div>
+                      ) : (
+                        <input
+                          type="number"
+                          min={600}
+                          max={3500}
+                          value={opponentElo}
+                          onChange={(e) =>
+                            setOpponentElo(Number(e.target.value))
+                          }
+                          required
+                          className={`${inputClass} bg-[#131820] font-mono font-bold`}
+                        />
                       )}
                     </div>
 
-                    {sortedOpponents.length > 0 && (
-                      <div>
-                        <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                          Choisir parmi vos adversaires déjà enregistrés (A → Z)
-                        </label>
-                        <select
-                          value={opponentId}
-                          onChange={(e) => {
-                            const found = opponents.find((o) => o.id === e.target.value);
-                            if (found) {
-                              linkOpponentFields(found);
-                            } else {
-                              setOpponentId('');
-                            }
-                          }}
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
-                        >
-                          <option value="">
-                            -- Sélectionner un joueur existant (ou saisir manuellement ci-dessous) --
+                    <div className="sm:col-span-3">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Titre FIDE
+                      </label>
+                      <select
+                        value={opponentTitle}
+                        onChange={(e) =>
+                          setOpponentTitle(e.target.value as FideTitle)
+                        }
+                        className={`${inputClass} bg-[#131820] font-mono`}
+                      >
+                        {FIDE_TITLES.map((t) => (
+                          <option key={t} value={t}>
+                            {t === 'None' ? 'Aucun' : t}
                           </option>
-                          {sortedOpponents.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {formatPlayerNameLastFirst(o.name, o.isNameUncertain)} (Std:{' '}
-                              {o.isStandardEloUnknown ? '?' : o.standardElo || o.elo})
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
-
-                    <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-1">
-                      <div className="sm:col-span-6">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-slate-800">
-                            NOM, Prénom de l'adversaire *
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setOpponentNameUncertain(!opponentNameUncertain)}
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
-                              opponentNameUncertain
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                            }`}
-                            title="Cocher si vous n'êtes pas certain de l'orthographe ou du nom"
-                          >
-                            <HelpCircle className="w-3 h-3" />
-                            Nom incertain (?)
-                          </button>
-                        </div>
-                        <div className="relative">
-                          <input
-                            type="text"
-                            value={opponentName}
-                            onChange={(e) => {
-                              setOpponentName(e.target.value);
-                              const m = opponents.find(
-                                (o) =>
-                                  stripQuestionMarkFromName(o.name).toLowerCase() ===
-                                  stripQuestionMarkFromName(e.target.value).toLowerCase()
-                              );
-                              if (m) linkOpponentFields(m);
-                            }}
-                            placeholder="Ex: VANDENBERGHE, Lucas"
-                            required={!opponentNameUncertain}
-                            className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900 focus:outline-none focus:border-slate-900"
-                          />
-                          {opponentNameUncertain && (
-                            <span className="absolute right-3 top-1/2 -translate-y-1/2 font-mono font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded text-xs border border-amber-300">
-                              ?
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-slate-800">
-                            Son classement Elo
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => setOpponentEloUnknown(!opponentEloUnknown)}
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold border transition-colors cursor-pointer ${
-                              opponentEloUnknown
-                                ? 'bg-amber-100 text-amber-900 border-amber-300'
-                                : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-100'
-                            }`}
-                            title="Indiquer ? si l'Elo de l'adversaire est inconnu ou non classé"
-                          >
-                            Elo ?
-                          </button>
-                        </div>
-                        {opponentEloUnknown ? (
-                          <div className="w-full px-3 py-2 font-mono font-bold bg-amber-50 border border-amber-300 text-amber-900 rounded-lg text-center">
-                            ? (Inconnu)
-                          </div>
-                        ) : (
-                          <input
-                            type="number"
-                            min={600}
-                            max={3500}
-                            value={opponentElo}
-                            onChange={(e) => setOpponentElo(Number(e.target.value))}
-                            required
-                            className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                          />
-                        )}
-                      </div>
-
-                      <div className="sm:col-span-3">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Titre FIDE
-                        </label>
-                        <select
-                          value={opponentTitle}
-                          onChange={(e) => setOpponentTitle(e.target.value as FideTitle)}
-                          className="w-full px-3 py-2 font-mono font-bold bg-white border border-slate-300 rounded-lg text-slate-900"
-                        >
-                          {FIDE_TITLES.map((t) => (
-                            <option key={t} value={t}>
-                              {t === 'None' ? 'Aucun' : t}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      <div className="sm:col-span-4">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          ID FIDE
-                        </label>
-                        <input
-                          type="text"
-                          value={opponentFideId}
-                          onChange={(e) =>
-                            setOpponentFideId(e.target.value.replace(/[^0-9]/g, ''))
-                          }
-                          placeholder="65104823"
-                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-4">
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          ID FFE
-                        </label>
-                        <input
-                          type="text"
-                          value={opponentFfeId}
-                          onChange={(e) =>
-                            setOpponentFfeId(e.target.value.toUpperCase())
-                          }
-                          placeholder="K59412"
-                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900"
-                        />
-                      </div>
-
-                      <div className="sm:col-span-4">
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-slate-800">
-                            Fédération
-                          </label>
-                          <FederationFlag
-                            code={opponentFederation}
-                            size="xs"
-                            title="Aperçu du drapeau"
-                          />
-                        </div>
-                        <input
-                          type="text"
-                          maxLength={4}
-                          value={opponentFederation}
-                          onChange={(e) =>
-                            setOpponentFederation(e.target.value.toUpperCase())
-                          }
-                          placeholder="FRA ou FIDE"
-                          className="w-full px-3 py-2 font-mono uppercase bg-white border border-slate-300 rounded-lg text-slate-900 focus:outline-none focus:border-slate-900"
-                        />
-                        <div className="mt-1 flex items-center gap-1.5 text-[11px] text-slate-600 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded">
-                          <FederationFlag code={opponentFederation} size="xs" />
-                          <span className="truncate">
-                            {opponentFederation === 'FIDE'
-                              ? 'FIDE'
-                              : POPULAR_FEDERATIONS.find(
-                                  (f) => f.code === opponentFederation.toUpperCase()
-                                )?.name || opponentFederation}
-                          </span>
-                        </div>
-                      </div>
+                        ))}
+                      </select>
                     </div>
 
-                    {/* Fédérations rapides pour l'adversaire */}
-                    <div className="pt-1">
-                      <div className="text-[11px] font-semibold text-slate-500 mb-1">
-                        Fédérations courantes :
+                    <div className="sm:col-span-4">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        ID FIDE
+                      </label>
+                      <input
+                        type="text"
+                        value={opponentFideId}
+                        onChange={(e) =>
+                          setOpponentFideId(
+                            e.target.value.replace(/[^0-9]/g, '')
+                          )
+                        }
+                        placeholder="65104823"
+                        className={`${inputClass} bg-[#131820] font-mono`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        ID FFE
+                      </label>
+                      <input
+                        type="text"
+                        value={opponentFfeId}
+                        onChange={(e) =>
+                          setOpponentFfeId(e.target.value.toUpperCase())
+                        }
+                        placeholder="K59412"
+                        className={`${inputClass} bg-[#131820] font-mono uppercase`}
+                      />
+                    </div>
+
+                    <div className="sm:col-span-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="font-semibold text-[#9BA7B8]">
+                          Fédération
+                        </label>
+                        <FederationFlag code={opponentFederation} size="xs" />
                       </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {POPULAR_FEDERATIONS.slice(0, 8).map((fed) => {
-                          const active = opponentFederation === fed.code;
-                          return (
-                            <button
-                              key={fed.code}
-                              type="button"
-                              onClick={() => setOpponentFederation(fed.code)}
-                              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-semibold border cursor-pointer transition-colors ${
-                                active
-                                  ? 'bg-slate-900 text-white border-slate-900'
-                                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                              }`}
-                            >
-                              <FederationFlag code={fed.code} size="xs" />
-                              <span>{fed.code}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
+                      <input
+                        type="text"
+                        maxLength={4}
+                        value={opponentFederation}
+                        onChange={(e) =>
+                          setOpponentFederation(e.target.value.toUpperCase())
+                        }
+                        placeholder="FRA ou FIDE"
+                        className={`${inputClass} bg-[#131820] font-mono uppercase`}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Fédérations rapides */}
+                  <div className="pt-1">
+                    <div className="text-[11px] font-semibold text-[#6C788B] mb-1.5">
+                      Fédérations courantes :
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {POPULAR_FEDERATIONS.slice(0, 8).map((fed) => {
+                        const active = opponentFederation === fed.code;
+                        return (
+                          <button
+                            key={fed.code}
+                            type="button"
+                            onClick={() => setOpponentFederation(fed.code)}
+                            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold border cursor-pointer transition-colors ${
+                              active
+                                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/50'
+                                : 'bg-[#131820] text-[#9BA7B8] border-[#2B3647] hover:text-white'
+                            }`}
+                          >
+                            <FederationFlag code={fed.code} size="xs" />
+                            <span>{fed.code}</span>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 </div>
@@ -1619,246 +1637,247 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
 
               {/* ÉTAPE 3 : RÉSULTAT, FIN DE PARTIE & VARIATION ELO */}
               {modalStep === 3 && (
-                <div className="space-y-4 pt-1">
-                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-4">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                      3. Score par rapport à vous & Calcul FIDE
+                <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl space-y-4">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                    3. Score & Calcul FIDE
+                  </div>
+
+                  <div>
+                    <div className="text-xs font-semibold text-[#9BA7B8] mb-2">
+                      Résultat de la partie (par rapport à vous) :
                     </div>
-
-                    {/* 3 boutons de score clairs */}
-                    <div>
-                      <div className="text-xs font-bold text-slate-900 mb-2">
-                        Résultat de la partie (par rapport à vous) :
-                      </div>
-                      <div className="grid grid-cols-3 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setMyScore(1)}
-                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
-                            myScore === 1
-                              ? 'bg-emerald-600 text-white border-emerald-600 shadow-md ring-2 ring-emerald-500/20'
-                              : 'bg-white text-emerald-800 border-emerald-200 hover:bg-emerald-50'
-                          }`}
-                        >
-                          <div className="text-xl">🏆</div>
-                          <div className="text-sm font-bold mt-1">1 Victoire</div>
-                          <div className="text-[11px] opacity-80 mt-0.5">
-                            {playerColor === 'White' ? '1-0' : '0-1'}
-                          </div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setMyScore(0.5)}
-                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
-                            myScore === 0.5
-                              ? 'bg-amber-500 text-white border-amber-500 shadow-md ring-2 ring-amber-500/20'
-                              : 'bg-white text-amber-800 border-amber-200 hover:bg-amber-50'
-                          }`}
-                        >
-                          <div className="text-xl">🤝</div>
-                          <div className="text-sm font-bold mt-1">1/2 Nulle</div>
-                          <div className="text-[11px] opacity-80 mt-0.5">1/2 - 1/2</div>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => setMyScore(0)}
-                          className={`py-3.5 px-4 rounded-xl border-2 font-bold text-center transition-all cursor-pointer ${
-                            myScore === 0
-                              ? 'bg-rose-600 text-white border-rose-600 shadow-md ring-2 ring-rose-600/20'
-                              : 'bg-white text-rose-800 border-rose-200 hover:bg-rose-50'
-                          }`}
-                        >
-                          <div className="text-xl">❌</div>
-                          <div className="text-sm font-bold mt-1">0 Défaite</div>
-                          <div className="text-[11px] opacity-80 mt-0.5">
-                            {playerColor === 'White' ? '0-1' : '1-0'}
-                          </div>
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Bloc calcul Elo et override */}
-                    <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                        <div>
-                          <div className="font-bold text-slate-900 text-sm">
-                            Variation FIDE Elo calculée
-                          </div>
-                          <div className="text-[11px] text-slate-500">
-                            {isFriendlyMode
-                              ? 'Mode amical actif : variation nulle (0) sur le classement officiel.'
-                              : opponentEloUnknown
-                              ? 'Adversaire non classé (?) : aucune variation Elo FIDE.'
-                              : `Formule FIDE : Δ = K(${kFactorUsed}) × (Score(${myScore}) - P_e(${expectedScore.toFixed(3)}))`}
-                          </div>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setMyScore(1)}
+                        className={`py-3.5 px-4 rounded-xl border font-bold text-center transition-all cursor-pointer ${
+                          myScore === 1
+                            ? 'bg-emerald-500 text-[#06130E] border-emerald-400'
+                            : 'bg-[#131820] text-emerald-400 border-[#2B3647]'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">1 · Victoire</div>
+                        <div className="text-[11px] opacity-80 mt-0.5 font-mono">
+                          {playerColor === 'White' ? '1-0' : '0-1'}
                         </div>
+                      </button>
 
-                        {!isFriendlyMode && !opponentEloUnknown && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (isManualEloOverride) {
-                                setIsManualEloOverride(false);
-                                setManualEloChange('');
-                              } else {
-                                setIsManualEloOverride(true);
-                                setManualEloChange(
-                                  computedEloDelta >= 0
-                                    ? `+${computedEloDelta.toFixed(1)}`
-                                    : computedEloDelta.toFixed(1)
-                                );
-                              }
-                            }}
-                            className="text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 px-3 py-1.5 rounded-lg cursor-pointer transition-colors"
-                          >
-                            {isManualEloOverride
-                              ? 'Calcul auto FIDE'
-                              : 'Modifier manuellement'}
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="flex items-center justify-between pt-1">
-                        <span className="text-xs text-slate-600 font-semibold">
-                          Variation enregistrée :
-                        </span>
-                        <div className="flex items-center gap-2">
-                          {isManualEloOverride ? (
-                            <input
-                              type="text"
-                              value={manualEloChange}
-                              onChange={(e) => setManualEloChange(e.target.value)}
-                              placeholder="+5.0 ou -3.2"
-                              className="w-28 px-2.5 py-1 text-center font-mono font-bold text-sm border-2 border-indigo-400 rounded-lg bg-white"
-                            />
-                          ) : (
-                            <span
-                              className={`font-mono text-base font-bold px-3 py-1 rounded-lg ${
-                                effectiveEloDelta >= 0
-                                  ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                                  : 'bg-rose-100 text-rose-900 border border-rose-300'
-                              }`}
-                            >
-                              {effectiveEloDelta >= 0
-                                ? `+${effectiveEloDelta.toFixed(1)}`
-                                : effectiveEloDelta.toFixed(1)}
-                            </span>
-                          )}
+                      <button
+                        type="button"
+                        onClick={() => setMyScore(0.5)}
+                        className={`py-3.5 px-4 rounded-xl border font-bold text-center transition-all cursor-pointer ${
+                          myScore === 0.5
+                            ? 'bg-[#D4A853] text-[#141007] border-[#E5C178]'
+                            : 'bg-[#131820] text-[#D4A853] border-[#2B3647]'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">½ · Nulle</div>
+                        <div className="text-[11px] opacity-80 mt-0.5 font-mono">
+                          1/2 - 1/2
                         </div>
-                      </div>
-                    </div>
+                      </button>
 
-                    {/* Ouverture */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setMyScore(0)}
+                        className={`py-3.5 px-4 rounded-xl border font-bold text-center transition-all cursor-pointer ${
+                          myScore === 0
+                            ? 'bg-rose-500 text-white border-rose-400'
+                            : 'bg-[#131820] text-rose-400 border-[#2B3647]'
+                        }`}
+                      >
+                        <div className="text-sm font-bold">0 · Défaite</div>
+                        <div className="text-[11px] opacity-80 mt-0.5 font-mono">
+                          {playerColor === 'White' ? '0-1' : '1-0'}
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Bloc calcul Elo */}
+                  <div className="p-4 bg-[#131820] border border-[#232C3A] rounded-xl space-y-3">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#232C3A] pb-2.5">
                       <div>
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Catalogue des ouvertures (ECO)
-                        </label>
-                        <select
-                          value=""
-                          onChange={(e) => {
-                            const found = ECO_OPENINGS_CATALOG.find(
-                              (o) => o.eco === e.target.value
-                            );
-                            if (found) {
-                              setEcoCode(found.eco);
-                              setOpeningName(found.name);
+                        <div className="font-semibold text-[#F1F4F8] text-sm">
+                          Variation FIDE calculée
+                        </div>
+                        <div className="text-[11px] text-[#9BA7B8] font-mono">
+                          {isFriendlyMode
+                            ? 'Mode amical : variation nulle (0)'
+                            : opponentEloUnknown
+                            ? 'Adversaire non classé (?) : aucune variation'
+                            : `Δ = K(${kFactorUsed}) × (S(${myScore}) - Pe(${expectedScore.toFixed(3)}))`}
+                        </div>
+                      </div>
+
+                      {!isFriendlyMode && !opponentEloUnknown && (
+                        <IconButton
+                          variant={isManualEloOverride ? 'gold' : 'surface'}
+                          size="sm"
+                          label={
+                            isManualEloOverride
+                              ? 'Revenir au calcul automatique FIDE'
+                              : 'Saisir manuellement la variation'
+                          }
+                          onClick={() => {
+                            if (isManualEloOverride) {
+                              setIsManualEloOverride(false);
+                              setManualEloChange('');
+                            } else {
+                              setIsManualEloOverride(true);
+                              setManualEloChange(
+                                computedEloDelta >= 0
+                                  ? `+${computedEloDelta.toFixed(1)}`
+                                  : computedEloDelta.toFixed(1)
+                              );
                             }
                           }}
-                          className="w-full px-2.5 py-2 bg-white border border-slate-300 rounded-lg font-semibold text-slate-900"
                         >
-                          <option value="">-- Préréglages ECO rapides --</option>
-                          {ECO_OPENINGS_CATALOG.map((o) => (
-                            <option key={o.eco} value={o.eco}>
-                              {o.eco} - {o.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </IconButton>
+                      )}
+                    </div>
 
-                      <div>
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Nom de l'ouverture
-                        </label>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs text-[#9BA7B8] font-semibold">
+                        Variation enregistrée :
+                      </span>
+                      {isManualEloOverride ? (
                         <input
                           type="text"
-                          value={openingName}
-                          onChange={(e) => setOpeningName(e.target.value)}
-                          placeholder="Ex: Défense Sicilienne, Najdorf"
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-medium"
+                          value={manualEloChange}
+                          onChange={(e) => setManualEloChange(e.target.value)}
+                          placeholder="+5.0 ou -3.2"
+                          className="w-28 px-2.5 py-1 text-center font-mono font-bold text-sm border border-[#D4A853] rounded-lg bg-[#19202B] text-[#F1F4F8]"
                         />
-                      </div>
+                      ) : (
+                        <span
+                          className={`font-mono text-base font-bold ${
+                            effectiveEloDelta >= 0
+                              ? 'text-emerald-400'
+                              : 'text-rose-400'
+                          }`}
+                        >
+                          {effectiveEloDelta >= 0
+                            ? `+${effectiveEloDelta.toFixed(1)}`
+                            : effectiveEloDelta.toFixed(1)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Ouverture */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                    <div>
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Catalogue ECO
+                      </label>
+                      <select
+                        value=""
+                        onChange={(e) => {
+                          const found = ECO_OPENINGS_CATALOG.find(
+                            (o) => o.eco === e.target.value
+                          );
+                          if (found) {
+                            setEcoCode(found.eco);
+                            setOpeningName(found.name);
+                          }
+                        }}
+                        className={`${inputClass} bg-[#131820]`}
+                      >
+                        <option value="">-- Préréglages ECO --</option>
+                        {ECO_OPENINGS_CATALOG.map((o) => (
+                          <option key={o.eco} value={o.eco}>
+                            {o.eco} - {o.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block font-semibold text-[#9BA7B8] mb-1">
+                        Nom de l'ouverture
+                      </label>
+                      <input
+                        type="text"
+                        value={openingName}
+                        onChange={(e) => setOpeningName(e.target.value)}
+                        placeholder="Ex: Défense Sicilienne, Najdorf"
+                        className={`${inputClass} bg-[#131820]`}
+                      />
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* ÉTAPE 4 : PGN, CHESS.COM, NOTES & RÉCAPITULATIF FINAL */}
+              {/* ÉTAPE 4 : PGN, CHESS.COM & RÉCAPITULATIF */}
               {modalStep === 4 && (
                 <div className="space-y-4 pt-1">
-                  <div className="p-4 bg-slate-50/80 border border-slate-200 rounded-xl space-y-3">
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5 text-amber-600" />
-                      4. PGN, analyse & Récapitulatif
+                  <div className="p-4 bg-[#19202B] border border-[#263142] rounded-xl space-y-3">
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-[#CBD5E1] flex items-center gap-1.5">
+                      <FileText className="w-3.5 h-3.5 text-[#D4A853]" />
+                      4. PGN, analyse & Vérification
                     </div>
 
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-slate-800">
-                            PGN de la partie (copier/coller)
+                          <label className="font-semibold text-[#9BA7B8]">
+                            PGN de la partie
                           </label>
-                          <button
-                            type="button"
+                          <IconButton
+                            variant="ghost"
+                            size="xs"
+                            label="Coller depuis le presse-papier"
                             onClick={async () => {
                               try {
-                                const text = await navigator.clipboard?.readText();
+                                const text =
+                                  await navigator.clipboard?.readText();
                                 if (text) setPgn(text);
                               } catch {}
                             }}
-                            className="text-[10px] font-semibold text-slate-700 hover:text-slate-900 underline cursor-pointer"
                           >
-                            Coller depuis presse-papier
-                          </button>
+                            <ClipboardPaste className="w-3.5 h-3.5" />
+                          </IconButton>
                         </div>
                         <textarea
                           rows={3}
                           value={pgn}
                           onChange={(e) => setPgn(e.target.value)}
                           placeholder="1. e4 c5 2. Nf3 d6 3. d4 cxd4..."
-                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg text-slate-900"
+                          className={`${inputClass} bg-[#131820] font-mono`}
                         />
                       </div>
 
                       <div>
-                        <label className="block font-semibold text-slate-800 mb-1">
-                          Notes personnelles / Moments clés
+                        <label className="block font-semibold text-[#9BA7B8] mb-1">
+                          Notes personnelles
                         </label>
                         <textarea
                           rows={3}
                           value={keyMomentNote}
                           onChange={(e) => setKeyMomentNote(e.target.value)}
-                          placeholder="Idées d'ouverture, tactiques manquées, finales..."
-                          className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-slate-900"
+                          placeholder="Idées d'ouverture, tactiques manquées..."
+                          className={`${inputClass} bg-[#131820]`}
                         />
                       </div>
 
                       <div className="sm:col-span-2">
                         <div className="flex items-center justify-between mb-1">
-                          <label className="font-semibold text-slate-800">
-                            Lien d'analyse Chess.com (facultatif)
+                          <label className="font-semibold text-[#9BA7B8]">
+                            Lien d'analyse Chess.com
                           </label>
                           {chessComUrl && (
                             <a
                               href={chessComUrl}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-[11px] font-bold text-blue-600 hover:underline inline-flex items-center gap-1"
+                              aria-label="Tester le lien"
+                              data-tooltip="Tester le lien"
+                              className="text-[#D4A853] hover:text-white inline-flex items-center gap-1"
                             >
-                              Tester le lien <ExternalLink className="w-3 h-3" />
+                              <ExternalLink className="w-3.5 h-3.5" />
                             </a>
                           )}
                         </div>
@@ -1867,75 +1886,86 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                           value={chessComUrl}
                           onChange={(e) => setChessComUrl(e.target.value)}
                           placeholder="https://www.chess.com/analysis/..."
-                          className="w-full px-3 py-2 font-mono bg-white border border-slate-300 rounded-lg"
+                          className={`${inputClass} bg-[#131820] font-mono`}
                         />
                       </div>
                     </div>
                   </div>
 
-                  {/* Grande fiche récapitulative de confirmation */}
-                  <div className="p-4 bg-slate-900 text-white rounded-xl shadow-md space-y-3">
-                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">
-                      Récapitulatif de la partie avant enregistrement
+                  {/* Fiche récapitulative finale */}
+                  <div className="p-4 bg-[#0B0E12] border border-[#2B3647] rounded-xl space-y-3">
+                    <div className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400">
+                      Vérification finale · Aucune sauvegarde automatique
                     </div>
 
                     <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                       <div>
-                        <div className="text-base font-bold flex items-center gap-2">
-                          <span className="text-lg">
+                        <div className="text-base font-bold flex items-center gap-2 text-[#F1F4F8]">
+                          <span>
                             {playerColor === 'White' ? '♔ Blancs' : '♚ Noirs'}
                           </span>
-                          <span>vs</span>
-                          <span className="text-amber-300 inline-flex items-center gap-1.5">
+                          <span className="text-[#6C788B]">vs</span>
+                          <span className="text-[#D4A853] inline-flex items-center gap-1.5">
                             <FederationFlag
                               code={opponentFederation || 'FRA'}
                               size="xs"
                             />
                             <span>
-                              {opponentTitle !== 'None' ? `[${opponentTitle}] ` : ''}
+                              {opponentTitle !== 'None'
+                                ? `[${opponentTitle}] `
+                                : ''}
                               {formatPlayerNameLastFirst(
-                                opponentName || (opponentNameUncertain ? 'INCONNU' : 'Adversaire')
+                                opponentName ||
+                                  (opponentNameUncertain
+                                    ? 'INCONNU'
+                                    : 'Adversaire')
                               )}
                             </span>
                           </span>
                           {opponentNameUncertain && (
-                            <span className="px-1.5 py-0.5 text-[10px] bg-amber-500/30 text-amber-300 border border-amber-500/50 rounded font-mono">
-                              ?
+                            <span className="text-xs font-mono text-[#D4A853]">
+                              (?)
                             </span>
                           )}
                         </div>
-                        <div className="text-xs text-slate-300 mt-1">
+                        <div className="text-xs text-[#9BA7B8] mt-1 font-mono">
                           {tournamentId === FREE_GAME_TOURNAMENT_ID
                             ? 'Partie libre'
-                            : tournaments.find((t) => t.id === tournamentId)?.name || 'Tournoi'}{' '}
-                          · Ronde {round} · Cadence {timeControl} · {datePlayed}
+                            : tournaments.find((t) => t.id === tournamentId)
+                                ?.name || 'Tournoi'}{' '}
+                          · Ronde {round} · {timeControl} · {datePlayed}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0 font-mono">
                         <span
-                          className={`px-3 py-1 rounded-lg text-sm font-bold ${
+                          className={`text-sm font-bold ${
                             myScore === 1
-                              ? 'bg-emerald-500 text-slate-950'
+                              ? 'text-emerald-400'
                               : myScore === 0.5
-                              ? 'bg-amber-400 text-slate-950'
-                              : 'bg-rose-500 text-white'
+                              ? 'text-[#D4A853]'
+                              : 'text-rose-400'
                           }`}
                         >
-                          {myScore === 1 ? '1 Victoire' : myScore === 0.5 ? '1/2 Nulle' : '0 Défaite'}
+                          {myScore === 1
+                            ? '1 · Victoire'
+                            : myScore === 0.5
+                            ? '½ · Nulle'
+                            : '0 · Défaite'}
                         </span>
 
                         {!isFriendlyMode && (
                           <span
-                            className={`px-2.5 py-1 rounded-lg text-sm font-bold ${
+                            className={`text-sm font-bold ${
                               effectiveEloDelta >= 0
-                                ? 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                                : 'bg-rose-950 text-rose-300 border border-rose-700'
+                                ? 'text-emerald-400'
+                                : 'text-rose-400'
                             }`}
                           >
-                            {effectiveEloDelta >= 0
+                            ({effectiveEloDelta >= 0
                               ? `+${effectiveEloDelta.toFixed(1)}`
                               : effectiveEloDelta.toFixed(1)}
+                            )
                           </span>
                         )}
                       </div>
@@ -1944,51 +1974,70 @@ export const GamesSection: React.FC<GamesSectionProps> = ({
                 </div>
               )}
 
-              {/* Barre de navigation Stepper */}
-              <div className="flex items-center justify-between pt-4 border-t border-slate-200">
-                <button
-                  type="button"
-                  onClick={() => setIsModalOpen(false)}
-                  className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-900 cursor-pointer"
-                >
-                  Annuler
-                </button>
+              {/* Barre de navigation Stepper (Icônes uniquement) */}
+              <div className="flex items-center justify-between pt-4 border-t border-[#232C3A]">
+                <div>
+                  {modalStep > 1 && (
+                    <IconButton
+                      variant="surface"
+                      size="md"
+                      label="Étape précédente"
+                      onClick={() => {
+                        setStepError(null);
+                        setModalStep((s) => (s - 1) as 1 | 2 | 3);
+                      }}
+                    >
+                      <ArrowLeft className="w-4 h-4" />
+                    </IconButton>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
-                  {modalStep > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setModalStep((s) => (s - 1) as 1 | 2 | 3)}
-                      className="px-4 py-2 text-xs font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer"
-                    >
-                      ← Précédent
-                    </button>
-                  )}
+                  <IconButton
+                    variant="ghost"
+                    size="md"
+                    label="Annuler"
+                    onClick={() => setIsModalOpen(false)}
+                  >
+                    <X className="w-4 h-4" />
+                  </IconButton>
 
                   {modalStep < 4 ? (
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="surface"
+                      size="md"
+                      label="Étape suivante"
                       onClick={() => {
-                        if (modalStep === 2 && !opponentName.trim() && !opponentNameUncertain) {
-                          alert("Veuillez renseigner le nom de l'adversaire ou cocher Nom incertain (?).");
+                        if (
+                          modalStep === 2 &&
+                          !opponentName.trim() &&
+                          !opponentNameUncertain
+                        ) {
+                          setStepError(
+                            "Veuillez renseigner le nom de l'adversaire ou cocher Nom incertain (?)."
+                          );
                           return;
                         }
+                        setStepError(null);
                         setModalStep((s) => (s + 1) as 2 | 3 | 4);
                       }}
-                      className="px-5 py-2 text-xs font-bold text-white bg-slate-900 rounded-lg hover:bg-slate-800 cursor-pointer"
                     >
-                      Suivant →
-                    </button>
+                      <ArrowRight className="w-4 h-4" />
+                    </IconButton>
                   ) : (
-                    <button
-                      type="button"
+                    <IconButton
+                      variant="primary"
+                      size="lg"
+                      label={
+                        isSubmitting
+                          ? 'Enregistrement en cours...'
+                          : 'Confirmer et enregistrer la partie'
+                      }
                       disabled={isSubmitting || !canConfirmSave}
                       onClick={() => handleSubmit()}
-                      className="px-6 py-2 text-xs font-bold text-white bg-emerald-700 hover:bg-emerald-800 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg shadow-sm transition-all cursor-pointer flex items-center gap-2"
                     >
-                      <Check className="w-4 h-4" />
-                      {isSubmitting ? 'Enregistrement...' : '✓ Confirmer & Enregistrer'}
-                    </button>
+                      <Check className="w-5 h-5" />
+                    </IconButton>
                   )}
                 </div>
               </div>

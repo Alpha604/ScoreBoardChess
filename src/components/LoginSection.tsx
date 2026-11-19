@@ -3,9 +3,10 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronUp,
-  Database,
+  Crown,
   KeyRound,
   LogIn,
+  RotateCcw,
   ShieldCheck,
   User,
 } from 'lucide-react';
@@ -16,6 +17,7 @@ import {
   DEFAULT_JSONBIN_MASTER_KEY,
   SessionConfig,
 } from '../services/jsonbinService';
+import { IconButton } from './IconButton';
 
 interface LoginSectionProps {
   defaultName: string;
@@ -69,82 +71,84 @@ export const LoginSection: React.FC<LoginSectionProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-[#efece6] flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white border border-slate-200 border-t-4 border-t-indigo-600 rounded-2xl shadow-md p-6 sm:p-8 space-y-6">
-        <div className="space-y-2 text-center">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-600 text-white flex items-center justify-center mx-auto shadow-sm">
-            <Database className="w-6 h-6" />
+    <div className="min-h-screen bg-[#0B0E12] flex items-center justify-center p-4">
+      <div className="max-w-md w-full bg-[#131820] border border-[#232C3A] rounded-2xl p-6 sm:p-8 space-y-6">
+        <div className="space-y-3 text-center">
+          <div className="w-12 h-12 rounded-xl bg-[#19202B] border border-[#D4A853]/40 text-[#D4A853] flex items-center justify-center mx-auto">
+            <Crown className="w-6 h-6" />
           </div>
-          <h1 className="text-2xl font-extrabold tracking-tight text-indigo-950">
+          <h1 className="text-2xl font-bold tracking-tight text-[#F1F4F8] font-display">
             FIDE Chess Ledger
           </h1>
-          <p className="text-sm text-slate-600">
-            Suivi de vos tournois classés FIDE et de votre espace indépendant de parties amicales.
+          <p className="text-xs text-[#9BA7B8] leading-relaxed">
+            Registre personnel des tournois homologués FIDE et espace isolé de parties amicales.
           </p>
         </div>
 
-        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2.5 text-xs text-emerald-900">
-          <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+        <div className="p-3.5 bg-[#19202B] border border-emerald-500/25 rounded-xl flex items-start gap-2.5 text-xs text-[#CBD5E1]">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
-            <div className="font-extrabold">2 Bases JSONBin pré-configurées et isolées</div>
-            <div className="text-emerald-800">
-              • Base Classée FIDE : <span className="font-mono font-bold">{binId.slice(0, 10)}...</span>
+            <div className="font-semibold text-emerald-300">
+              2 Bases JSONBin pré-configurées
             </div>
-            <div className="text-emerald-800">
-              • Base Parties Amicales : <span className="font-mono font-bold">{friendlyBinId.slice(0, 10)}...</span>
+            <div className="text-[#9BA7B8] font-mono text-[11px]">
+              FIDE : {binId.slice(0, 10)}... · Amical : {friendlyBinId.slice(0, 10)}...
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs font-semibold text-rose-800">
+          <div className="p-3 bg-rose-500/10 border border-rose-500/30 rounded-xl text-xs font-medium text-rose-300">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-extrabold text-indigo-950 mb-1.5">
-              Votre Nom ou Pseudo de joueur
+            <label className="block text-xs font-semibold text-[#CBD5E1] mb-1.5">
+              Nom ou Pseudo de joueur
             </label>
             <div className="relative">
-              <User className="w-4 h-4 text-indigo-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <User className="w-4 h-4 text-[#6C788B] absolute left-3.5 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 required
                 value={playerName}
                 onChange={(e) => setPlayerName(e.target.value)}
                 placeholder="Ex: Roméo"
-                className="w-full pl-10 pr-3 py-2.5 text-sm bg-slate-50 border border-slate-300 rounded-xl font-semibold text-slate-900 focus:bg-white focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100"
+                className="w-full pl-10 pr-3 py-2.5 text-sm bg-[#19202B] border border-[#2B3647] rounded-xl font-medium text-[#F1F4F8] placeholder:text-[#6C788B] focus:outline-none focus:border-emerald-500"
               />
             </div>
           </div>
 
           <div className="pt-1">
-            <button
-              type="button"
-              onClick={() => setShowAdvanced(!showAdvanced)}
-              className="w-full flex items-center justify-between px-3 py-2 text-xs font-bold text-indigo-800 bg-indigo-50/60 hover:bg-indigo-100/70 border border-indigo-200 rounded-xl transition-colors"
-            >
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-4 h-4 text-indigo-600" />
-                Paramètres des 2 JSONBin.io (Classé & Amical)
+            <div className="flex items-center justify-between px-3 py-2 bg-[#19202B] border border-[#232C3A] rounded-xl">
+              <span className="flex items-center gap-2 text-xs font-medium text-[#9BA7B8]">
+                <ShieldCheck className="w-4 h-4 text-[#D4A853]" />
+                <span>Identifiants JSONBin</span>
               </span>
-              {showAdvanced ? (
-                <ChevronUp className="w-4 h-4" />
-              ) : (
-                <ChevronDown className="w-4 h-4" />
-              )}
-            </button>
+              <IconButton
+                label={showAdvanced ? 'Masquer les identifiants' : 'Configurer les identifiants'}
+                variant="ghost"
+                size="sm"
+                onClick={() => setShowAdvanced(!showAdvanced)}
+              >
+                {showAdvanced ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </IconButton>
+            </div>
 
             {showAdvanced && (
-              <div className="mt-3 p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-4 text-xs">
-                <div className="space-y-2 pb-3 border-b border-slate-200">
-                  <div className="font-extrabold text-indigo-900">
-                    1. JSONBin Officiel (Parties Classées FIDE)
+              <div className="mt-3 p-4 bg-[#19202B] border border-[#232C3A] rounded-xl space-y-4 text-xs">
+                <div className="space-y-2 pb-3 border-b border-[#232C3A]">
+                  <div className="font-semibold text-emerald-300">
+                    1. Base Classée FIDE
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
+                    <label className="block font-medium text-[#9BA7B8] mb-1">
                       ID du Bin Classé
                     </label>
                     <input
@@ -152,32 +156,32 @@ export const LoginSection: React.FC<LoginSectionProps> = ({
                       required
                       value={binId}
                       onChange={(e) => setBinId(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:outline-none focus:border-indigo-600"
+                      className="w-full px-3 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
+                    <label className="block font-medium text-[#9BA7B8] mb-1">
                       Clé Principale (X-Master-Key)
                     </label>
                     <div className="relative">
-                      <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <KeyRound className="w-3.5 h-3.5 text-[#6C788B] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="password"
                         required
                         value={masterKey}
                         onChange={(e) => setMasterKey(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:outline-none focus:border-indigo-600"
+                        className="w-full pl-8 pr-3 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-emerald-500"
                       />
                     </div>
                   </div>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="font-extrabold text-emerald-900">
-                    2. JSONBin Indépendant (Parties Amicales)
+                  <div className="font-semibold text-[#D4A853]">
+                    2. Base Parties Amicales
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
+                    <label className="block font-medium text-[#9BA7B8] mb-1">
                       ID du Bin Amical
                     </label>
                     <input
@@ -185,50 +189,57 @@ export const LoginSection: React.FC<LoginSectionProps> = ({
                       required
                       value={friendlyBinId}
                       onChange={(e) => setFriendlyBinId(e.target.value)}
-                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:outline-none focus:border-emerald-600"
+                      className="w-full px-3 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-[#D4A853]"
                     />
                   </div>
                   <div>
-                    <label className="block font-bold text-slate-700 mb-1">
+                    <label className="block font-medium text-[#9BA7B8] mb-1">
                       Clé Principale Bin Amical
                     </label>
                     <div className="relative">
-                      <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <KeyRound className="w-3.5 h-3.5 text-[#6C788B] absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
                         type="password"
                         required
                         value={friendlyMasterKey}
                         onChange={(e) => setFriendlyMasterKey(e.target.value)}
-                        className="w-full pl-8 pr-3 py-2 bg-white border border-slate-300 rounded-lg font-mono text-xs focus:outline-none focus:border-emerald-600"
+                        className="w-full pl-8 pr-3 py-2 bg-[#131820] border border-[#2B3647] rounded-lg font-mono text-xs text-[#F1F4F8] focus:outline-none focus:border-[#D4A853]"
                       />
                     </div>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    setBinId(DEFAULT_JSONBIN_BIN_ID);
-                    setMasterKey(DEFAULT_JSONBIN_MASTER_KEY);
-                    setFriendlyBinId(DEFAULT_FRIENDLY_JSONBIN_BIN_ID);
-                    setFriendlyMasterKey(DEFAULT_FRIENDLY_JSONBIN_MASTER_KEY);
-                  }}
-                  className="text-[11px] font-bold text-indigo-700 hover:underline"
-                >
-                  Restaurer mes identifiants JSONBin par défaut
-                </button>
+                <div className="flex justify-end">
+                  <IconButton
+                    label="Restaurer les identifiants par défaut"
+                    variant="surface"
+                    size="sm"
+                    onClick={() => {
+                      setBinId(DEFAULT_JSONBIN_BIN_ID);
+                      setMasterKey(DEFAULT_JSONBIN_MASTER_KEY);
+                      setFriendlyBinId(DEFAULT_FRIENDLY_JSONBIN_BIN_ID);
+                      setFriendlyMasterKey(DEFAULT_FRIENDLY_JSONBIN_MASTER_KEY);
+                    }}
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </IconButton>
+                </div>
               </div>
             )}
           </div>
 
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-3 text-sm font-extrabold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-sm transition-colors cursor-pointer disabled:opacity-50"
-          >
-            <LogIn className="w-4 h-4" />
-            {isLoading ? 'Connexion et chargement...' : 'Accéder à mon espace échecs'}
-          </button>
+          <div className="pt-2 flex items-center justify-center">
+            <IconButton
+              type="submit"
+              disabled={isLoading}
+              label={isLoading ? 'Connexion en cours...' : 'Accéder à mon espace échecs'}
+              variant="primary"
+              size="lg"
+              className="w-full h-11"
+            >
+              <LogIn className={`w-5 h-5 ${isLoading ? 'animate-pulse' : ''}`} />
+            </IconButton>
+          </div>
         </form>
       </div>
     </div>
