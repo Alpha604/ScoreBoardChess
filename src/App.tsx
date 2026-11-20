@@ -10,15 +10,22 @@ import {
   Coffee,
   Crown,
   Database,
+  Download,
   LayoutDashboard,
+  Lock,
   LogOut,
   MoreHorizontal,
   Plus,
   RefreshCw,
+  RotateCcw,
   Settings,
+  ShieldAlert,
+  ShieldCheck,
   Swords,
   TrendingUp,
   Trophy,
+  Unlock,
+  UploadCloud,
   UserCheck,
   Users,
   X,
@@ -34,11 +41,13 @@ import { ProfileModal } from './components/ProfileModal';
 import { SettingsSection } from './components/SettingsSection';
 import { StatisticsSection } from './components/StatisticsSection';
 import { TournamentsSection } from './components/TournamentsSection';
+import { TwoFactorChallengeModal } from './components/TwoFactorChallengeModal';
 import {
   addDeletedItemToVault,
   BinSyncStatus,
   clearDeletedVault,
   clearSession,
+  createAutoSnapshotIfSignificant,
   createEmptyDatabase,
   createEmptyFriendlyDatabase,
   createLocalSnapshot,
@@ -47,21 +56,35 @@ import {
   DEFAULT_FRIENDLY_JSONBIN_MASTER_KEY,
   DeletedVaultItem,
   deleteLocalSnapshot,
+  detectSuspiciousFideDataDrop,
+  detectSuspiciousFriendlyDataDrop,
   fetchDatabaseFromJsonBin,
   fetchFriendlyDatabaseFromJsonBin,
   FideLedgerDatabase,
   FriendlyLedgerDatabase,
   getDeletedVaultItems,
+  getLastBackupExportAt,
   getLocalSnapshots,
+  getPendingSyncState,
+  getReadOnlyLockState,
   getSavedSession,
   loadFriendlyLocalCache,
   loadLocalCache,
   LocalSnapshotItem,
+  markBackupExportedNow,
+  mergeFideDatabases,
+  mergeFriendlyDatabases,
+  ParsedBackupFile,
+  PendingSyncState,
   removeDeletedItemFromVault,
   saveDatabaseToJsonBin,
   saveFriendlyDatabaseToJsonBin,
+  saveFriendlyLocalCache,
+  saveLocalCache,
+  saveReadOnlyLockState,
   saveSession,
   SessionConfig,
+  setPendingSyncForLedger,
   syncOpponentsWithGames,
 } from './services/jsonbinService';
 import {
@@ -135,13 +158,35 @@ export default function App() {
     putRequestsCount: 0,
   }));
 
-  // Cache local : Corbeille de secours & Points de restauration
+  // Cache local : Corbeille de secours, Points de restauration & Garde-fous
   const [deletedVault, setDeletedVault] = useState<DeletedVaultItem[]>(() =>
     getDeletedVaultItems()
   );
   const [snapshots, setSnapshots] = useState<LocalSnapshotItem[]>(() =>
     getLocalSnapshots()
   );
+  const [pendingSync, setPendingSync] = useState<PendingSyncState>(() =>
+    getPendingSyncState()
+  );
+  const [lastBackupAt, setLastBackupAt] = useState<string | null>(() =>
+    getLastBackupExportAt()
+  );
+  const [isReadOnlyLock, setIsReadOnlyLock] = useState<boolean>(() =>
+    getReadOnlyLockState()
+  );
+  const [undoToast, setUndoToast] = useState<{
+    item: DeletedVaultItem;
+    message: string;
+  } | null>(null);
+  const undoTimerRef = useRef<number | null>(null);
+
+  const [suspiciousWriteChallenge, setSuspiciousWriteChallenge] = useState<{
+    title: string;
+    subtitle: string;
+    itemLabel: string;
+    details: { label: string; value: string }[];
+    onConfirm: () => Promise<void>;
+  } | null>(null);
 
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
@@ -159,10 +204,68 @@ export default function App() {
   const games = dbState.games || [];
   const ratingHistory = dbState.ratingHistory || [];
 
-  // Lecture JSONBin #1 (Parties Classées FIDE)
+  const triggerUndoToast = useCallback(
+    (item: DeletedVaultItem | undefined, message: string) => {
+      if (!item) return;
+      if (undoTimerRef.current) {
+        window.clearTimeout(undoTimerRef.current);
+      }
+      setUndoToast({ item, message });
+      undoTimerRef.current = window.setTimeout(() => {
+        setUndoToast(null);
+      }, 12000);
+    },
+    []
+  );
+
+  const handleToggleReadOnlyLock = useCallback(() => {
+    setIsReadOnlyLock((prev) => {
+      const next = !prev;
+      saveReadOnlyLockState(next);
+      if (!next) {
+        setErrorBanner((err) =>
+          err && err.includes('Lecture seule') ? null : err
+        );
+      }
+      return next;
+    });
+  }, []);
+
+  // Protection navigateur contre la fermeture d'onglet pendant un envoi ou si des modifs attendent le Cloud
+  useEffect(() => {
+    const hasUnsynced =
+      isSyncing ||
+      isSyncingFriendly ||
+      pendingSync.fide.pending ||
+      pendingSync.friendly.pending;
+    if (!hasUnsynced) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [isSyncing, isSyncingFriendly, pendingSync]);
+
+  // Lecture JSONBin #1 (Parties Classées FIDE) avec protection anti-écrasement des modifs locales
   const loadFromJsonBin = useCallback(
-    async (customSession?: SessionConfig) => {
+    async (customSession?: SessionConfig, forceCloudOverwrite = false) => {
       const target = customSession || session;
+      if (getPendingSyncState().fide.pending && !forceCloudOverwrite) {
+        setSnapshots(
+          createAutoSnapshotIfSignificant(
+            'fide',
+            'Protection avant lecture Cloud (modifs en attente)',
+            dbState,
+            true
+          )
+        );
+        setErrorBanner(
+          'Synchro Cloud bloquée par sécurité : vous avez des modifications locales non envoyées sur JSONBin. Cliquez sur « Réessayer l’envoi JSONBin » pour ne rien perdre.'
+        );
+        return;
+      }
+
       setIsLoading(true);
       setErrorBanner(null);
       setFideStatus((prev) => ({
@@ -176,6 +279,19 @@ export default function App() {
           target.binId,
           target.masterKey
         );
+        if (
+          dbState.games.length > remoteData.games.length ||
+          dbState.tournaments.length > remoteData.tournaments.length
+        ) {
+          setSnapshots(
+            createAutoSnapshotIfSignificant(
+              'fide',
+              'Sauvegarde auto avant synchro Cloud',
+              dbState,
+              true
+            )
+          );
+        }
         setDbState(remoteData);
         setFideStatus((prev) => ({
           ...prev,
@@ -202,13 +318,28 @@ export default function App() {
         setIsLoading(false);
       }
     },
-    [session]
+    [session, dbState]
   );
 
-  // Lecture JSONBin #2 (Parties Amicales)
+  // Lecture JSONBin #2 (Parties Amicales) avec protection anti-écrasement
   const loadFriendlyFromJsonBin = useCallback(
-    async (customSession?: SessionConfig) => {
+    async (customSession?: SessionConfig, forceCloudOverwrite = false) => {
       const target = customSession || session;
+      if (getPendingSyncState().friendly.pending && !forceCloudOverwrite) {
+        setSnapshots(
+          createAutoSnapshotIfSignificant(
+            'friendly',
+            'Protection avant lecture Cloud Amical (modifs en attente)',
+            friendlyDbState,
+            true
+          )
+        );
+        setErrorBanner(
+          'Synchro Cloud Amical bloquée par sécurité : des modifications locales attendent d’être envoyées vers JSONBin #2.'
+        );
+        return;
+      }
+
       const fBinId = target.friendlyBinId || DEFAULT_FRIENDLY_JSONBIN_BIN_ID;
       const fKey =
         target.friendlyMasterKey ||
@@ -227,6 +358,19 @@ export default function App() {
           fBinId,
           fKey
         );
+        if (
+          friendlyDbState.games.length > remoteFriendly.games.length ||
+          friendlyDbState.tournaments.length > remoteFriendly.tournaments.length
+        ) {
+          setSnapshots(
+            createAutoSnapshotIfSignificant(
+              'friendly',
+              'Sauvegarde auto Amical avant synchro Cloud',
+              friendlyDbState,
+              true
+            )
+          );
+        }
         setFriendlyDbState(remoteFriendly);
         setFriendlyStatus((prev) => ({
           ...prev,
@@ -252,7 +396,7 @@ export default function App() {
         setIsSyncingFriendly(false);
       }
     },
-    [session]
+    [session, friendlyDbState]
   );
 
   // Une seule lecture au démarrage pour le Bin #1
@@ -280,11 +424,22 @@ export default function App() {
     session,
   ]);
 
-  // Sauvegarde JSONBin #1 (Parties Classées FIDE)
+  // Sauvegarde JSONBin #1 (Parties Classées FIDE) avec Verrou Lecture Seule + Garde-fou Anti-Perte
   const persistUpdate = async (
     nextDb: FideLedgerDatabase,
-    options?: { skipAutoCreateOpponentsFromGames?: boolean }
+    options?: {
+      skipAutoCreateOpponentsFromGames?: boolean;
+      allowSuspiciousDrop?: boolean;
+      bypassReadOnlyLock?: boolean;
+    }
   ) => {
+    if (isReadOnlyLock && !options?.bypassReadOnlyLock) {
+      const lockMsg =
+        'Verrou Anti-Fausse Manip actif (Lecture seule) : déverrouillez le cadenas en haut pour modifier ou supprimer.';
+      setErrorBanner(lockMsg);
+      throw new Error(lockMsg);
+    }
+
     const finalOpponents = options?.skipAutoCreateOpponentsFromGames
       ? deduplicateOpponents(nextDb.opponents || [])
       : syncOpponentsWithGames(nextDb.opponents || [], nextDb.games || []);
@@ -293,7 +448,36 @@ export default function App() {
       ...nextDb,
       opponents: finalOpponents,
     };
+
+    if (!options?.allowSuspiciousDrop) {
+      const dropCheck = detectSuspiciousFideDataDrop(dbState, updatedDb);
+      if (dropCheck.isSuspicious) {
+        setSnapshots(
+          createAutoSnapshotIfSignificant(
+            'fide',
+            'Blocage anti-écrasement (chute de données)',
+            dbState,
+            true
+          )
+        );
+        setSuspiciousWriteChallenge({
+          title: 'Chute importante de données détectée — Confirmer ?',
+          subtitle: `${dropCheck.reason} Un snapshot de secours a été créé automatiquement. Validez avec Microsoft Authenticator pour continuer.`,
+          itemLabel: 'Protection Anti-Écrasement · Base Classée FIDE',
+          details: dropCheck.details,
+          onConfirm: () =>
+            persistUpdate(updatedDb, {
+              ...options,
+              allowSuspiciousDrop: true,
+              bypassReadOnlyLock: true,
+            }),
+        });
+        return;
+      }
+    }
+
     setDbState(updatedDb);
+    saveLocalCache(updatedDb);
     setIsSyncing(true);
     setErrorBanner(null);
     setFideStatus((prev) => ({
@@ -308,6 +492,15 @@ export default function App() {
         session.masterKey
       );
       setDbState(saved);
+      setPendingSync(setPendingSyncForLedger('fide', false));
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'fide',
+          'Sauvegarde auto après modification FIDE',
+          saved,
+          false
+        )
+      );
       setFideStatus((prev) => ({
         ...prev,
         binId: session.binId,
@@ -321,7 +514,18 @@ export default function App() {
         err instanceof Error
           ? err.message
           : 'Erreur lors de la sauvegarde dans le JSONBin Classé.';
-      setErrorBanner(msg);
+      setPendingSync(setPendingSyncForLedger('fide', true, msg));
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'fide',
+          'Sauvegarde locale (échec envoi JSONBin)',
+          updatedDb,
+          true
+        )
+      );
+      setErrorBanner(
+        `${msg} — Vos modifications restent sauvegardées localement ; utilisez « Réessayer l’envoi JSONBin ».`
+      );
       setFideStatus((prev) => ({
         ...prev,
         state: 'error',
@@ -333,11 +537,22 @@ export default function App() {
     }
   };
 
-  // Sauvegarde JSONBin #2 (Parties Amicales - 100% Indépendant)
+  // Sauvegarde JSONBin #2 (Parties Amicales - 100% Indépendant) avec Verrou Lecture Seule + Garde-fou
   const persistFriendlyUpdate = async (
     nextFriendlyDb: FriendlyLedgerDatabase,
-    options?: { skipAutoCreateOpponentsFromGames?: boolean }
+    options?: {
+      skipAutoCreateOpponentsFromGames?: boolean;
+      allowSuspiciousDrop?: boolean;
+      bypassReadOnlyLock?: boolean;
+    }
   ) => {
+    if (isReadOnlyLock && !options?.bypassReadOnlyLock) {
+      const lockMsg =
+        'Verrou Anti-Fausse Manip actif (Lecture seule) : déverrouillez le cadenas en haut pour modifier ou supprimer.';
+      setErrorBanner(lockMsg);
+      throw new Error(lockMsg);
+    }
+
     const finalOpponents = options?.skipAutoCreateOpponentsFromGames
       ? deduplicateOpponents(nextFriendlyDb.opponents || [])
       : syncOpponentsWithGames(
@@ -350,7 +565,39 @@ export default function App() {
       ledgerType: 'friendly_chess_ledger',
       opponents: finalOpponents,
     };
+
+    if (!options?.allowSuspiciousDrop) {
+      const dropCheck = detectSuspiciousFriendlyDataDrop(
+        friendlyDbState,
+        updatedFriendlyDb
+      );
+      if (dropCheck.isSuspicious) {
+        setSnapshots(
+          createAutoSnapshotIfSignificant(
+            'friendly',
+            'Blocage anti-écrasement Amical',
+            friendlyDbState,
+            true
+          )
+        );
+        setSuspiciousWriteChallenge({
+          title: 'Chute importante détectée (Parties Amicales) — Confirmer ?',
+          subtitle: `${dropCheck.reason} Un snapshot de secours a été créé automatiquement.`,
+          itemLabel: 'Protection Anti-Écrasement · Base Amicale',
+          details: dropCheck.details,
+          onConfirm: () =>
+            persistFriendlyUpdate(updatedFriendlyDb, {
+              ...options,
+              allowSuspiciousDrop: true,
+              bypassReadOnlyLock: true,
+            }),
+        });
+        return;
+      }
+    }
+
     setFriendlyDbState(updatedFriendlyDb);
+    saveFriendlyLocalCache(updatedFriendlyDb);
     setIsSyncingFriendly(true);
     setErrorBanner(null);
 
@@ -374,6 +621,15 @@ export default function App() {
         fKey
       );
       setFriendlyDbState(saved);
+      setPendingSync(setPendingSyncForLedger('friendly', false));
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'friendly',
+          'Sauvegarde auto Amical',
+          saved,
+          false
+        )
+      );
       setFriendlyStatus((prev) => ({
         ...prev,
         binId: fBinId,
@@ -387,7 +643,18 @@ export default function App() {
         err instanceof Error
           ? err.message
           : 'Erreur lors de la sauvegarde dans le JSONBin Amical.';
-      setErrorBanner(msg);
+      setPendingSync(setPendingSyncForLedger('friendly', true, msg));
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'friendly',
+          'Sauvegarde locale Amical (échec envoi JSONBin)',
+          updatedFriendlyDb,
+          true
+        )
+      );
+      setErrorBanner(
+        `${msg} — Vos données amicales restent en sécurité en cache local.`
+      );
       setFriendlyStatus((prev) => ({
         ...prev,
         binId: fBinId,
@@ -543,17 +810,28 @@ export default function App() {
 
   const handleDeleteOpponent = async (id: string) => {
     const target = opponents.find((o) => o.id === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'fide',
+        `Avant suppression joueur : ${target ? formatPlayerNameLastFirst(target.name) : id}`,
+        dbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'fide',
-          itemType: 'opponent',
-          label: formatPlayerNameLastFirst(target.name),
-          details: `Std ${target.standardElo || target.elo} · Rap ${
-            target.rapidElo || target.elo
-          } · Blz ${target.blitzElo || target.elo}`,
-          data: target,
-        })
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'fide',
+        itemType: 'opponent',
+        label: formatPlayerNameLastFirst(target.name),
+        details: `Std ${target.standardElo || target.elo} · Rap ${
+          target.rapidElo || target.elo
+        } · Blz ${target.blitzElo || target.elo}`,
+        data: target,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(
+        updatedVault[0],
+        `Joueur « ${formatPlayerNameLastFirst(target.name)} » supprimé`
       );
     }
     const nextOpponents = opponents.filter((o) => o.id !== id);
@@ -622,16 +900,27 @@ export default function App() {
   const handleDeleteTournament = async (id: string) => {
     const target = tournaments.find((t) => t.id === id);
     const associatedGames = games.filter((g) => g.tournamentId === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'fide',
+        `Avant suppression tournoi : ${target?.name || id}`,
+        dbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'fide',
-          itemType: 'tournament',
-          label: target.name,
-          details: `${target.location} · ${associatedGames.length} partie(s) associée(s)`,
-          data: target,
-          associatedGames,
-        })
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'fide',
+        itemType: 'tournament',
+        label: target.name,
+        details: `${target.location} · ${associatedGames.length} partie(s) associée(s)`,
+        data: target,
+        associatedGames,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(
+        updatedVault[0],
+        `Tournoi « ${target.name} » (${associatedGames.length} partie(s)) supprimé`
       );
     }
     const nextTournaments = tournaments.filter((t) => t.id !== id);
@@ -672,18 +961,27 @@ export default function App() {
 
   const handleDeleteGame = async (id: string) => {
     const target = games.find((g) => g.id === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'fide',
+        `Avant suppression partie vs ${target?.opponentName || id}`,
+        dbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'fide',
-          itemType: 'game',
-          label: `Ronde ${target.round} vs ${formatPlayerNameLastFirst(
-            target.opponentName
-          )}`,
-          details: `${target.tournamentName} (${target.datePlayed})`,
-          data: target,
-        })
-      );
+      const label = `Ronde ${target.round} vs ${formatPlayerNameLastFirst(
+        target.opponentName
+      )}`;
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'fide',
+        itemType: 'game',
+        label,
+        details: `${target.tournamentName} (${target.datePlayed})`,
+        data: target,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(updatedVault[0], `Partie « ${label} » supprimée`);
     }
     const nextGames = games.filter((g) => g.id !== id);
     if (inspectedGame?.id === id) setInspectedGame(null);
@@ -774,15 +1072,26 @@ export default function App() {
 
   const handleDeleteRatingRecord = async (id: string) => {
     const target = ratingHistory.find((r) => r.id === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'fide',
+        `Avant suppression relevé mensuel ${target?.period || id}`,
+        dbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'fide',
-          itemType: 'rating',
-          label: `Relevé mensuel ${target.period}`,
-          details: `Classique ${target.standardElo} · Rapide ${target.rapidElo} · Blitz ${target.blitzElo}`,
-          data: target,
-        })
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'fide',
+        itemType: 'rating',
+        label: `Relevé mensuel ${target.period}`,
+        details: `Classique ${target.standardElo} · Rapide ${target.rapidElo} · Blitz ${target.blitzElo}`,
+        data: target,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(
+        updatedVault[0],
+        `Relevé mensuel ${target.period} supprimé`
       );
     }
     const nextRatings = ratingHistory.filter((r) => r.id !== id);
@@ -794,6 +1103,34 @@ export default function App() {
 
   const handleLoadSampleData = async () => {
     const sampleDb = buildSampleFideLedgerDatabase();
+    if (games.length > 0 || tournaments.length > 0) {
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'fide',
+          'Avant chargement données exemple',
+          dbState,
+          true
+        )
+      );
+      setSuspiciousWriteChallenge({
+        title: 'Remplacer la base actuelle par les données d’exemple ?',
+        subtitle:
+          'Des données existent déjà dans votre base. Un snapshot automatique a été créé ; validez avec Microsoft Authenticator pour continuer.',
+        itemLabel: 'Chargement des données de démonstration FIDE',
+        details: [
+          {
+            label: 'Données actuelles',
+            value: `${tournaments.length} tournoi(s) · ${games.length} partie(s)`,
+          },
+        ],
+        onConfirm: () =>
+          persistUpdate(sampleDb, {
+            allowSuspiciousDrop: true,
+            bypassReadOnlyLock: true,
+          }),
+      });
+      return;
+    }
     await persistUpdate(sampleDb);
   };
 
@@ -863,15 +1200,26 @@ export default function App() {
 
   const handleDeleteFriendlyOpponent = async (id: string) => {
     const target = friendlyOpponents.find((o) => o.id === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'friendly',
+        `Avant suppression joueur amical : ${target ? formatPlayerNameLastFirst(target.name) : id}`,
+        friendlyDbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'friendly',
-          itemType: 'opponent',
-          label: formatPlayerNameLastFirst(target.name),
-          details: `Joueur Amical · Std ${target.standardElo || target.elo}`,
-          data: target,
-        })
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'friendly',
+        itemType: 'opponent',
+        label: formatPlayerNameLastFirst(target.name),
+        details: `Joueur Amical · Std ${target.standardElo || target.elo}`,
+        data: target,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(
+        updatedVault[0],
+        `Joueur amical « ${formatPlayerNameLastFirst(target.name)} » supprimé`
       );
     }
     const nextOpponents = friendlyOpponents.filter((o) => o.id !== id);
@@ -942,16 +1290,27 @@ export default function App() {
   const handleDeleteFriendlyTournament = async (id: string) => {
     const target = friendlyTournaments.find((t) => t.id === id);
     const associatedGames = friendlyGames.filter((g) => g.tournamentId === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'friendly',
+        `Avant suppression session amicale : ${target?.name || id}`,
+        friendlyDbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'friendly',
-          itemType: 'tournament',
-          label: target.name,
-          details: `Session Amicale · ${associatedGames.length} partie(s)`,
-          data: target,
-          associatedGames,
-        })
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'friendly',
+        itemType: 'tournament',
+        label: target.name,
+        details: `Session Amicale · ${associatedGames.length} partie(s)`,
+        data: target,
+        associatedGames,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(
+        updatedVault[0],
+        `Session amicale « ${target.name} » supprimée`
       );
     }
     const nextTournaments = friendlyTournaments.filter((t) => t.id !== id);
@@ -991,18 +1350,27 @@ export default function App() {
 
   const handleDeleteFriendlyGame = async (id: string) => {
     const target = friendlyGames.find((g) => g.id === id);
+    setSnapshots(
+      createAutoSnapshotIfSignificant(
+        'friendly',
+        `Avant suppression partie amicale vs ${target?.opponentName || id}`,
+        friendlyDbState,
+        true
+      )
+    );
     if (target) {
-      setDeletedVault(
-        addDeletedItemToVault({
-          ledger: 'friendly',
-          itemType: 'game',
-          label: `Partie Amicale R${target.round} vs ${formatPlayerNameLastFirst(
-            target.opponentName
-          )}`,
-          details: `${target.tournamentName} (${target.datePlayed})`,
-          data: target,
-        })
-      );
+      const label = `Partie Amicale R${target.round} vs ${formatPlayerNameLastFirst(
+        target.opponentName
+      )}`;
+      const updatedVault = addDeletedItemToVault({
+        ledger: 'friendly',
+        itemType: 'game',
+        label,
+        details: `${target.tournamentName} (${target.datePlayed})`,
+        data: target,
+      });
+      setDeletedVault(updatedVault);
+      triggerUndoToast(updatedVault[0], `${label} supprimée`);
     }
     const nextGames = friendlyGames.filter((g) => g.id !== id);
     await persistFriendlyUpdate({
@@ -1013,11 +1381,67 @@ export default function App() {
 
   const handleLoadSampleFriendlyData = async () => {
     const sampleFriendly = buildSampleFriendlyLedgerDatabase();
+    if (friendlyGames.length > 0 || friendlyTournaments.length > 0) {
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'friendly',
+          'Avant chargement données exemple Amicales',
+          friendlyDbState,
+          true
+        )
+      );
+      setSuspiciousWriteChallenge({
+        title: 'Remplacer la base Amicale par les données d’exemple ?',
+        subtitle:
+          'Des données amicales existent déjà. Un snapshot de secours a été créé automatiquement ; validez avec Microsoft Authenticator pour continuer.',
+        itemLabel: 'Chargement des données d’exemple · Base Amicale',
+        details: [
+          {
+            label: 'Données actuelles',
+            value: `${friendlyTournaments.length} session(s) · ${friendlyGames.length} partie(s)`,
+          },
+        ],
+        onConfirm: () =>
+          persistFriendlyUpdate(sampleFriendly, {
+            allowSuspiciousDrop: true,
+            bypassReadOnlyLock: true,
+          }),
+      });
+      return;
+    }
     await persistFriendlyUpdate(sampleFriendly);
   };
 
   const handleInitializeEmptyFriendlyBin = async () => {
     const emptyFriendly = createEmptyFriendlyDatabase();
+    if (friendlyGames.length > 0 || friendlyTournaments.length > 0) {
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'friendly',
+          'Avant réinitialisation Bin Amical vide',
+          friendlyDbState,
+          true
+        )
+      );
+      setSuspiciousWriteChallenge({
+        title: 'Réinitialiser la base Amicale à vide ?',
+        subtitle:
+          'Cette action effacerait vos parties amicales actuelles. Un snapshot de secours a été créé ; validez avec Microsoft Authenticator.',
+        itemLabel: 'Réinitialisation à vide · Base Amicale',
+        details: [
+          {
+            label: 'Données actuelles',
+            value: `${friendlyTournaments.length} session(s) · ${friendlyGames.length} partie(s)`,
+          },
+        ],
+        onConfirm: () =>
+          persistFriendlyUpdate(emptyFriendly, {
+            allowSuspiciousDrop: true,
+            bypassReadOnlyLock: true,
+          }),
+      });
+      return;
+    }
     await persistFriendlyUpdate(emptyFriendly);
   };
 
@@ -1109,6 +1533,117 @@ export default function App() {
     }
 
     setDeletedVault(removeDeletedItemFromVault(item.id));
+  };
+
+  const handleExportBackupFile = (scope: 'fide' | 'friendly' | 'combined') => {
+    const dateSlug = new Date().toISOString().slice(0, 10);
+    let data: unknown;
+    let filename: string;
+    if (scope === 'fide') {
+      data = dbState;
+      filename = `sauvegarde_fide_classee_${dateSlug}.json`;
+    } else if (scope === 'friendly') {
+      data = friendlyDbState;
+      filename = `sauvegarde_parties_amicales_${dateSlug}.json`;
+    } else {
+      data = {
+        backupType: 'fide_chess_ledger_full_backup',
+        exportedAt: new Date().toISOString(),
+        fideDb: dbState,
+        friendlyDb: friendlyDbState,
+      };
+      filename = `sauvegarde_complete_echecs_${dateSlug}.json`;
+    }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+    setLastBackupAt(markBackupExportedNow());
+  };
+
+  const handleImportBackupFile = async (
+    parsed: ParsedBackupFile,
+    mode: 'merge' | 'replace'
+  ) => {
+    // Snapshot de sécurité systématique avant tout import
+    if (parsed.kind === 'fide' || parsed.kind === 'combined') {
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'fide',
+          `Avant import JSON (${mode === 'merge' ? 'Fusion' : 'Remplacement'})`,
+          dbState,
+          true
+        )
+      );
+    }
+    if (parsed.kind === 'friendly' || parsed.kind === 'combined') {
+      setSnapshots(
+        createAutoSnapshotIfSignificant(
+          'friendly',
+          `Avant import JSON Amical (${mode === 'merge' ? 'Fusion' : 'Remplacement'})`,
+          friendlyDbState,
+          true
+        )
+      );
+    }
+
+    if (parsed.kind === 'fide') {
+      const nextFide =
+        mode === 'merge'
+          ? mergeFideDatabases(dbState, parsed.db).merged
+          : {
+              ...parsed.db,
+              profile: {
+                ...parsed.db.profile,
+                twoFactorAuth:
+                  dbState.profile.twoFactorAuth ?? parsed.db.profile.twoFactorAuth,
+              },
+            };
+      await persistUpdate(nextFide, {
+        allowSuspiciousDrop: mode === 'replace',
+        bypassReadOnlyLock: true,
+      });
+    } else if (parsed.kind === 'friendly') {
+      const nextFriendly =
+        mode === 'merge'
+          ? mergeFriendlyDatabases(friendlyDbState, parsed.db).merged
+          : parsed.db;
+      await persistFriendlyUpdate(nextFriendly, {
+        allowSuspiciousDrop: mode === 'replace',
+        bypassReadOnlyLock: true,
+      });
+    } else {
+      const nextFide =
+        mode === 'merge'
+          ? mergeFideDatabases(dbState, parsed.fideDb).merged
+          : {
+              ...parsed.fideDb,
+              profile: {
+                ...parsed.fideDb.profile,
+                twoFactorAuth:
+                  dbState.profile.twoFactorAuth ??
+                  parsed.fideDb.profile.twoFactorAuth,
+              },
+            };
+      const nextFriendly =
+        mode === 'merge'
+          ? mergeFriendlyDatabases(friendlyDbState, parsed.friendlyDb).merged
+          : parsed.friendlyDb;
+
+      await persistUpdate(nextFide, {
+        allowSuspiciousDrop: mode === 'replace',
+        bypassReadOnlyLock: true,
+      });
+      await persistFriendlyUpdate(nextFriendly, {
+        allowSuspiciousDrop: mode === 'replace',
+        bypassReadOnlyLock: true,
+      });
+    }
   };
 
   const handleRestoreSingleEntity = async (
@@ -1462,6 +1997,24 @@ export default function App() {
 
         <div className="flex items-center gap-1.5 shrink-0">
           <IconButton
+            variant={isReadOnlyLock ? 'gold' : 'surface'}
+            size="sm"
+            tooltipPos="bottom"
+            label={
+              isReadOnlyLock
+                ? 'Lecture seule active — Cliquer pour déverrouiller'
+                : 'Verrouiller en lecture seule'
+            }
+            onClick={handleToggleReadOnlyLock}
+          >
+            {isReadOnlyLock ? (
+              <Lock className="w-3.5 h-3.5" />
+            ) : (
+              <Unlock className="w-3.5 h-3.5" />
+            )}
+          </IconButton>
+
+          <IconButton
             variant={activeTab === 'friendly' ? 'gold' : 'surface'}
             size="sm"
             tooltipPos="bottom"
@@ -1547,6 +2100,24 @@ export default function App() {
 
               <div className="flex items-center gap-1.5">
                 <IconButton
+                  variant={isReadOnlyLock ? 'gold' : 'surface'}
+                  size="sm"
+                  tooltipPos="bottom"
+                  label={
+                    isReadOnlyLock
+                      ? 'Verrou Lecture seule actif — Cliquer pour déverrouiller'
+                      : 'Activer le verrou Lecture seule (anti-fausse manip)'
+                  }
+                  onClick={handleToggleReadOnlyLock}
+                >
+                  {isReadOnlyLock ? (
+                    <Lock className="w-3.5 h-3.5" />
+                  ) : (
+                    <Unlock className="w-3.5 h-3.5" />
+                  )}
+                </IconButton>
+
+                <IconButton
                   variant="primary"
                   size="sm"
                   tooltipPos="bottom"
@@ -1579,6 +2150,80 @@ export default function App() {
           </header>
 
           <main className="max-w-[1280px] w-full mx-auto px-3 sm:px-7 lg:px-10 py-4 sm:py-6 space-y-5 sm:space-y-6">
+            {/* BANNIÈRE VERROU LECTURE SEULE (ANTI-FAUSSE MANIP) */}
+            {isReadOnlyLock && (
+              <div className="p-3.5 bg-[#D4A853]/12 border border-[#D4A853]/40 rounded-xl flex flex-wrap items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 text-[#F1F4F8]">
+                  <Lock className="w-4 h-4 text-[#D4A853] shrink-0" />
+                  <span>
+                    <strong className="text-[#D4A853]">
+                      Mode Lecture Seule actif :
+                    </strong>{' '}
+                    toutes les suppressions et modifications sont bloquées contre les fausses manipulations.
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleToggleReadOnlyLock}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#D4A853] hover:bg-[#c59a45] text-[#0B0E12] font-bold transition-colors cursor-pointer"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Déverrouiller l’édition</span>
+                </button>
+              </div>
+            )}
+
+            {/* BANNIÈRE FILE DE SECOURS HORS-LIGNE (MODIFICATIONS NON ENVOYÉES VERS JSONBIN) */}
+            {(pendingSync.fide.pending || pendingSync.friendly.pending) && (
+              <div className="p-4 bg-[#D4A853]/15 border border-[#D4A853]/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="flex items-start gap-2.5 text-[#F1F4F8]">
+                  <ShieldAlert className="w-4 h-4 text-[#D4A853] shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-bold text-[#D4A853]">
+                      Modifications enregistrées localement en attente d’envoi vers JSONBin
+                    </div>
+                    <div className="text-[#CBD5E1] mt-0.5">
+                      Vos données sont sauvegardées en sécurité dans le navigateur. Renvoyez-les vers le Cloud dès que la connexion est prête.
+                    </div>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => handleExportBackupFile('combined')}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#19202B] border border-[#2B3647] text-[#F1F4F8] font-semibold cursor-pointer"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Sauvegarde .JSON</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={isAnySyncing}
+                    onClick={async () => {
+                      if (pendingSync.fide.pending) {
+                        await persistUpdate(dbState, {
+                          allowSuspiciousDrop: true,
+                          bypassReadOnlyLock: true,
+                          skipAutoCreateOpponentsFromGames: true,
+                        });
+                      }
+                      if (pendingSync.friendly.pending) {
+                        await persistFriendlyUpdate(friendlyDbState, {
+                          allowSuspiciousDrop: true,
+                          bypassReadOnlyLock: true,
+                          skipAutoCreateOpponentsFromGames: true,
+                        });
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer disabled:opacity-50"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Réessayer l’envoi JSONBin</span>
+                  </button>
+                </div>
+              </div>
+            )}
+
             {errorBanner && (
               <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center justify-between gap-3 text-xs text-rose-200">
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -2194,8 +2839,14 @@ export default function App() {
               friendlyDb={friendlyDbState}
               fideStatus={fideStatus}
               friendlyStatus={friendlyStatus}
+              pendingSync={pendingSync}
+              lastBackupAt={lastBackupAt}
+              isReadOnlyLock={isReadOnlyLock}
               deletedVault={deletedVault}
               snapshots={snapshots}
+              onToggleReadOnlyLock={handleToggleReadOnlyLock}
+              onExportBackupFile={handleExportBackupFile}
+              onImportBackupFile={handleImportBackupFile}
               onUpdateSessionConfig={(nextSession) => {
                 saveSession(nextSession);
                 setSession(nextSession);
@@ -2209,10 +2860,20 @@ export default function App() {
                 }));
               }}
               onSyncFideFromCloud={() => loadFromJsonBin()}
-              onPushFideToCloud={() => persistUpdate(dbState)}
+              onPushFideToCloud={() =>
+                persistUpdate(dbState, {
+                  allowSuspiciousDrop: true,
+                  bypassReadOnlyLock: true,
+                  skipAutoCreateOpponentsFromGames: true,
+                })
+              }
               onSyncFriendlyFromCloud={() => loadFriendlyFromJsonBin()}
               onPushFriendlyToCloud={() =>
-                persistFriendlyUpdate(friendlyDbState)
+                persistFriendlyUpdate(friendlyDbState, {
+                  allowSuspiciousDrop: true,
+                  bypassReadOnlyLock: true,
+                  skipAutoCreateOpponentsFromGames: true,
+                })
               }
               onRestoreDeletedItem={handleRestoreDeletedItem}
               onRemoveDeletedItem={(id) =>
@@ -2231,26 +2892,71 @@ export default function App() {
               }
               onRestoreFullSnapshot={async (snap) => {
                 if (snap.ledger === 'fide') {
-                  await persistUpdate(snap.payload as FideLedgerDatabase);
+                  setSnapshots(
+                    createAutoSnapshotIfSignificant(
+                      'fide',
+                      'Sauvegarde auto avant restauration snapshot',
+                      dbState,
+                      true
+                    )
+                  );
+                  await persistUpdate(snap.payload as FideLedgerDatabase, {
+                    allowSuspiciousDrop: true,
+                    bypassReadOnlyLock: true,
+                  });
                 } else {
+                  setSnapshots(
+                    createAutoSnapshotIfSignificant(
+                      'friendly',
+                      'Sauvegarde auto Amical avant restauration snapshot',
+                      friendlyDbState,
+                      true
+                    )
+                  );
                   await persistFriendlyUpdate(
-                    snap.payload as FriendlyLedgerDatabase
+                    snap.payload as FriendlyLedgerDatabase,
+                    {
+                      allowSuspiciousDrop: true,
+                      bypassReadOnlyLock: true,
+                    }
                   );
                 }
               }}
               onRestoreSelectiveFromSnapshot={async (snap, part) => {
                 if (snap.ledger === 'fide') {
+                  setSnapshots(
+                    createAutoSnapshotIfSignificant(
+                      'fide',
+                      `Sauvegarde auto avant restauration ciblée (${part})`,
+                      dbState,
+                      true
+                    )
+                  );
                   const p = snap.payload as FideLedgerDatabase;
-                  await persistUpdate({
-                    ...dbState,
-                    [part]: p[part],
-                  });
+                  await persistUpdate(
+                    {
+                      ...dbState,
+                      [part]: p[part],
+                    },
+                    { allowSuspiciousDrop: true, bypassReadOnlyLock: true }
+                  );
                 } else {
+                  setSnapshots(
+                    createAutoSnapshotIfSignificant(
+                      'friendly',
+                      `Sauvegarde auto Amical avant restauration ciblée (${part})`,
+                      friendlyDbState,
+                      true
+                    )
+                  );
                   const p = snap.payload as FriendlyLedgerDatabase;
-                  await persistFriendlyUpdate({
-                    ...friendlyDbState,
-                    [part]: p[part],
-                  });
+                  await persistFriendlyUpdate(
+                    {
+                      ...friendlyDbState,
+                      [part]: p[part],
+                    },
+                    { allowSuspiciousDrop: true, bypassReadOnlyLock: true }
+                  );
                 }
               }}
               onRestoreSingleEntity={handleRestoreSingleEntity}
@@ -2524,6 +3230,70 @@ export default function App() {
           onSave={handleSaveProfile}
         />
       )}
+
+      {/* TOAST FLOTTANT ANNULER (UNDO) APRÈS SUPPRESSION */}
+      {undoToast && (
+        <div className="fixed bottom-20 md:bottom-5 right-4 left-4 sm:left-auto sm:max-w-md z-50 bg-[#19202B] border border-[#D4A853]/50 rounded-2xl p-3.5 shadow-2xl flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <ShieldCheck className="w-4 h-4 text-[#D4A853] shrink-0" />
+            <div className="min-w-0">
+              <div className="font-semibold text-[#F1F4F8] truncate">
+                {undoToast.message}
+              </div>
+              <div className="text-[11px] text-[#9BA7B8]">
+                Copié dans la Corbeille de secours
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={async () => {
+                const target = undoToast.item;
+                setUndoToast(null);
+                await handleRestoreDeletedItem(target);
+              }}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Annuler</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setUndoToast(null)}
+              aria-label="Fermer"
+              className="p-1 text-[#9BA7B8] hover:text-white cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODALE A2F ANTI-ÉCRASEMENT / CHUTE DE DONNÉES */}
+      <TwoFactorChallengeModal
+        isOpen={Boolean(suspiciousWriteChallenge)}
+        variant="danger"
+        badgeLabel="Garde-fou Anti-Perte de Données · A2F"
+        title={suspiciousWriteChallenge?.title || ''}
+        subtitle={suspiciousWriteChallenge?.subtitle || ''}
+        itemLabel={suspiciousWriteChallenge?.itemLabel || ''}
+        details={suspiciousWriteChallenge?.details}
+        requireCheckbox
+        checkboxLabel="Je confirme que cette réduction massive de données est volontaire."
+        confirmLabel="Confirmer avec A2F"
+        twoFactorAuth={profile?.twoFactorAuth}
+        accountName={profile?.displayName}
+        onUpdateTwoFactorAuth={handleUpdateTwoFactorAuth}
+        onCancel={() => setSuspiciousWriteChallenge(null)}
+        onVerifiedConfirm={async () => {
+          if (!suspiciousWriteChallenge) return;
+          const act = suspiciousWriteChallenge;
+          setSuspiciousWriteChallenge(null);
+          await act.onConfirm();
+        }}
+      />
     </div>
   );
 }
+

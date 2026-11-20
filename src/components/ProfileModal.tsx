@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { Check, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, Check, X } from 'lucide-react';
 import { FideTitle, PlayerProfile } from '../types/fide';
 import { POPULAR_FEDERATIONS } from '../utils/federationFlags';
 import { FederationFlag } from './FederationFlag';
@@ -20,24 +20,98 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   onClose,
   onSave,
 }) => {
-  const [displayName, setDisplayName] = useState(
-    profile?.displayName || defaultDisplayName || 'Joueur FIDE'
-  );
-  const [fideId, setFideId] = useState(profile?.fideId || '65104823');
-  const [ffeId, setFfeId] = useState(profile?.ffeId || 'K59412');
-  const [federation, setFederation] = useState(profile?.federation || 'FRA');
-  const [club, setClub] = useState(profile?.club || '');
-  const [fideTitle, setFideTitle] = useState<FideTitle>(profile?.fideTitle || 'None');
-  const [birthYear, setBirthYear] = useState(profile?.birthYear || 2002);
-  const [kFactor, setKFactor] = useState<10 | 20 | 40>(profile?.kFactor || 20);
-  const [standardElo, setStandardElo] = useState(profile?.standardElo || 1800);
-  const [rapidElo, setRapidElo] = useState(profile?.rapidElo || 1820);
-  const [blitzElo, setBlitzElo] = useState(profile?.blitzElo || 1850);
-  const [targetElo, setTargetElo] = useState(profile?.targetElo || 2000);
+  const initialDisplayName = profile?.displayName || defaultDisplayName || 'Joueur FIDE';
+  const initialFideId = profile?.fideId || '65104823';
+  const initialFfeId = profile?.ffeId || 'K59412';
+  const initialFederation = profile?.federation || 'FRA';
+  const initialClub = profile?.club || '';
+  const initialTitle = profile?.fideTitle || 'None';
+  const initialBirthYear = profile?.birthYear || 2002;
+  const initialKFactor = profile?.kFactor || 20;
+  const initialStd = profile?.standardElo || 1800;
+  const initialRap = profile?.rapidElo || 1820;
+  const initialBlz = profile?.blitzElo || 1850;
+  const initialTarget = profile?.targetElo || 2000;
+
+  const [displayName, setDisplayName] = useState(initialDisplayName);
+  const [fideId, setFideId] = useState(initialFideId);
+  const [ffeId, setFfeId] = useState(initialFfeId);
+  const [federation, setFederation] = useState(initialFederation);
+  const [club, setClub] = useState(initialClub);
+  const [fideTitle, setFideTitle] = useState<FideTitle>(initialTitle);
+  const [birthYear, setBirthYear] = useState(initialBirthYear);
+  const [kFactor, setKFactor] = useState<10 | 20 | 40>(initialKFactor);
+  const [standardElo, setStandardElo] = useState(initialStd);
+  const [rapidElo, setRapidElo] = useState(initialRap);
+  const [blitzElo, setBlitzElo] = useState(initialBlz);
+  const [targetElo, setTargetElo] = useState(initialTarget);
   const [isSaving, setIsSaving] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmLargeEloJump, setConfirmLargeEloJump] = useState(false);
+
+  const isDirty = useMemo(
+    () =>
+      displayName !== initialDisplayName ||
+      fideId !== initialFideId ||
+      ffeId !== initialFfeId ||
+      federation !== initialFederation ||
+      club !== initialClub ||
+      fideTitle !== initialTitle ||
+      Number(birthYear) !== initialBirthYear ||
+      kFactor !== initialKFactor ||
+      Number(standardElo) !== initialStd ||
+      Number(rapidElo) !== initialRap ||
+      Number(blitzElo) !== initialBlz ||
+      Number(targetElo) !== initialTarget,
+    [
+      displayName,
+      initialDisplayName,
+      fideId,
+      initialFideId,
+      ffeId,
+      initialFfeId,
+      federation,
+      initialFederation,
+      club,
+      initialClub,
+      fideTitle,
+      initialTitle,
+      birthYear,
+      initialBirthYear,
+      kFactor,
+      initialKFactor,
+      standardElo,
+      initialStd,
+      rapidElo,
+      initialRap,
+      blitzElo,
+      initialBlz,
+      targetElo,
+      initialTarget,
+    ]
+  );
+
+  const hasLargeEloJump = useMemo(() => {
+    return (
+      Math.abs((Number(standardElo) || 1500) - initialStd) >= 250 ||
+      Math.abs((Number(rapidElo) || 1500) - initialRap) >= 250 ||
+      Math.abs((Number(blitzElo) || 1500) - initialBlz) >= 250
+    );
+  }, [standardElo, rapidElo, blitzElo, initialStd, initialRap, initialBlz]);
+
+  const handleRequestClose = () => {
+    if (isDirty && !confirmDiscard) {
+      setConfirmDiscard(true);
+      return;
+    }
+    onClose();
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (hasLargeEloJump && !confirmLargeEloJump) {
+      return;
+    }
     setIsSaving(true);
     try {
       await onSave({
@@ -73,10 +147,35 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               Identifiants officiels, facteur K et classements par cadence.
             </p>
           </div>
-          <IconButton label="Fermer" variant="ghost" size="sm" onClick={onClose}>
+          <IconButton label="Fermer" variant="ghost" size="sm" onClick={handleRequestClose}>
             <X className="w-4 h-4" />
           </IconButton>
         </div>
+
+        {confirmDiscard && (
+          <div className="p-3.5 rounded-xl bg-[#D4A853]/12 border border-[#D4A853]/40 flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div className="flex items-center gap-2 text-[#F1F4F8] font-semibold">
+              <AlertTriangle className="w-4 h-4 text-[#D4A853] shrink-0" />
+              <span>Modifications non enregistrées. Quitter sans sauvegarder ?</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDiscard(false)}
+                className="px-2.5 py-1 rounded-lg bg-[#19202B] border border-[#2B3647] text-[#CBD5E1] font-semibold cursor-pointer"
+              >
+                Continuer
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold cursor-pointer"
+              >
+                Abandonner
+              </button>
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -199,7 +298,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 min={800}
                 max={3500}
                 value={standardElo}
-                onChange={(e) => setStandardElo(Number(e.target.value))}
+                onChange={(e) => {
+                  setStandardElo(Number(e.target.value));
+                  setConfirmLargeEloJump(false);
+                }}
                 className="w-full px-3 py-2 font-mono font-bold bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8]"
               />
             </div>
@@ -210,7 +312,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 min={800}
                 max={3500}
                 value={rapidElo}
-                onChange={(e) => setRapidElo(Number(e.target.value))}
+                onChange={(e) => {
+                  setRapidElo(Number(e.target.value));
+                  setConfirmLargeEloJump(false);
+                }}
                 className="w-full px-3 py-2 font-mono font-bold bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8]"
               />
             </div>
@@ -221,7 +326,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
                 min={800}
                 max={3500}
                 value={blitzElo}
-                onChange={(e) => setBlitzElo(Number(e.target.value))}
+                onChange={(e) => {
+                  setBlitzElo(Number(e.target.value));
+                  setConfirmLargeEloJump(false);
+                }}
                 className="w-full px-3 py-2 font-mono font-bold bg-[#19202B] border border-[#2B3647] rounded-xl text-[#F1F4F8]"
               />
             </div>
@@ -237,6 +345,23 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               />
             </div>
           </div>
+
+          {hasLargeEloJump && (
+            <label className="flex items-start gap-2.5 p-3 rounded-xl bg-[#D4A853]/10 border border-[#D4A853]/35 text-xs text-[#F1F4F8] cursor-pointer">
+              <input
+                type="checkbox"
+                checked={confirmLargeEloJump}
+                onChange={(e) => setConfirmLargeEloJump(e.target.checked)}
+                className="mt-0.5 rounded border-[#323E52] bg-[#19202B] text-emerald-500"
+              />
+              <span>
+                <strong className="text-[#D4A853]">
+                  Variation inhabituelle d’Elo détectée (±250 pts ou plus).
+                </strong>{' '}
+                Cochez pour confirmer qu’il ne s’agit pas d’une faute de frappe.
+              </span>
+            </label>
+          )}
 
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
@@ -264,12 +389,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-[#232C3A]">
-            <IconButton label="Annuler" variant="surface" onClick={onClose}>
+            <IconButton label="Annuler" variant="surface" onClick={handleRequestClose}>
               <X className="w-4 h-4" />
             </IconButton>
             <IconButton
               type="submit"
-              disabled={isSaving}
+              disabled={isSaving || (hasLargeEloJump && !confirmLargeEloJump)}
               label={isSaving ? 'Enregistrement...' : 'Enregistrer le profil'}
               variant="primary"
             >
@@ -281,3 +406,4 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
     </div>
   );
 };
+

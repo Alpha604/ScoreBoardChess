@@ -162,11 +162,13 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
   const [quickTournamentId, setQuickTournamentId] = useState(FREE_GAME_TOURNAMENT_ID);
   const [quickChessComUrl, setQuickChessComUrl] = useState('');
   const [isQuickSubmitting, setIsQuickSubmitting] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
 
   const handleQuickSaveFriendlyGame = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!quickOpponentName.trim()) return;
     setIsQuickSubmitting(true);
+    setQuickError(null);
     try {
       const oppName = formatPlayerNameLastFirst(quickOpponentName);
       const uncertain = quickOpponentUncertain || hasQuestionMarkName(oppName);
@@ -218,6 +220,12 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
       setQuickOpponentUncertain(false);
       setQuickChessComUrl('');
       setIsQuickLoggerOpen(false);
+    } catch (err) {
+      setQuickError(
+        err instanceof Error
+          ? err.message
+          : 'Impossible d’enregistrer la partie amicale.'
+      );
     } finally {
       setIsQuickSubmitting(false);
     }
@@ -336,6 +344,12 @@ export const FriendlySection: React.FC<FriendlySectionProps> = ({
                 <X className="w-3.5 h-3.5" />
               </IconButton>
             </div>
+
+            {quickError && (
+              <div className="p-2.5 rounded-lg bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300">
+                {quickError}
+              </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-12 gap-3 text-xs">
               {/* Choix adversaire ou saisie */}

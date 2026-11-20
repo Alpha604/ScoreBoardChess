@@ -675,6 +675,106 @@ export function saveFriendlyLocalCache(dbData: FriendlyLedgerDatabase): void {
   }
 }
 
+const LOCAL_STORAGE_PENDING_SYNC_KEY = 'chess_ledger_pending_sync_v1';
+const LOCAL_STORAGE_LAST_BACKUP_AT_KEY = 'chess_ledger_last_backup_at_v1';
+const LOCAL_STORAGE_READONLY_LOCK_KEY = 'chess_ledger_readonly_lock_v1';
+
+export interface PendingSyncEntry {
+  pending: boolean;
+  lastError?: string;
+  updatedAt?: string;
+}
+
+export interface PendingSyncState {
+  fide: PendingSyncEntry;
+  friendly: PendingSyncEntry;
+}
+
+export function getPendingSyncState(): PendingSyncState {
+  try {
+    const raw = localStorage.getItem(LOCAL_STORAGE_PENDING_SYNC_KEY);
+    if (!raw) {
+      return { fide: { pending: false }, friendly: { pending: false } };
+    }
+    const parsed = JSON.parse(raw);
+    return {
+      fide: {
+        pending: Boolean(parsed?.fide?.pending),
+        lastError: parsed?.fide?.lastError,
+        updatedAt: parsed?.fide?.updatedAt,
+      },
+      friendly: {
+        pending: Boolean(parsed?.friendly?.pending),
+        lastError: parsed?.friendly?.lastError,
+        updatedAt: parsed?.friendly?.updatedAt,
+      },
+    };
+  } catch {
+    return { fide: { pending: false }, friendly: { pending: false } };
+  }
+}
+
+export function setPendingSyncForLedger(
+  ledger: 'fide' | 'friendly',
+  pending: boolean,
+  lastError?: string
+): PendingSyncState {
+  const current = getPendingSyncState();
+  const next: PendingSyncState = {
+    ...current,
+    [ledger]: pending
+      ? {
+          pending: true,
+          lastError,
+          updatedAt: new Date().toISOString(),
+        }
+      : { pending: false },
+  };
+  try {
+    localStorage.setItem(LOCAL_STORAGE_PENDING_SYNC_KEY, JSON.stringify(next));
+  } catch {
+    // Ignore
+  }
+  return next;
+}
+
+export function getLastBackupExportAt(): string | null {
+  try {
+    return localStorage.getItem(LOCAL_STORAGE_LAST_BACKUP_AT_KEY);
+  } catch {
+    return null;
+  }
+}
+
+export function markBackupExportedNow(): string {
+  const now = new Date().toISOString();
+  try {
+    localStorage.setItem(LOCAL_STORAGE_LAST_BACKUP_AT_KEY, now);
+  } catch {
+    // Ignore
+  }
+  return now;
+}
+
+export function getReadOnlyLockState(): boolean {
+  try {
+    return localStorage.getItem(LOCAL_STORAGE_READONLY_LOCK_KEY) === 'true';
+  } catch {
+    return false;
+  }
+}
+
+export function saveReadOnlyLockState(locked: boolean): void {
+  try {
+    localStorage.setItem(
+      LOCAL_STORAGE_READONLY_LOCK_KEY,
+      locked ? 'true' : 'false'
+    );
+  } catch {
+    // Ignore
+  }
+}
+
 // ==========================================
 // CORBEILLE DE SECOURS & POINTS DE RESTAURATION LOCAUX
 // ==========================================
@@ -700,7 +800,7 @@ export function addDeletedItemToVault(
       id: `del_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       deletedAt: new Date().toISOString(),
     };
-    const updated = [newItem, ...current].slice(0, 40);
+    const updated = [newItem, ...current].slice(0, 50);
     localStorage.setItem(LOCAL_STORAGE_DELETED_VAULT_KEY, JSON.stringify(updated));
     return updated;
   } catch {
@@ -754,12 +854,42 @@ export function createLocalSnapshot(
       summary,
       payload: JSON.parse(JSON.stringify(payload)),
     };
-    const updated = [snap, ...current].slice(0, 15);
+    const updated = [snap, ...current].slice(0, 25);
     localStorage.setItem(LOCAL_STORAGE_SNAPSHOTS_KEY, JSON.stringify(updated));
     return updated;
   } catch {
-    return [];
+    return getLocalSnapshots();
   }
+}
+
+/**
+ * Crée un snapshot automatique intelligent (soit forcé avant une action critique,
+ * soit périodique toutes les 5 minutes si des données ont changé).
+ */
+export function createAutoSnapshotIfSignificant(
+  ledger: 'fide' | 'friendly',
+  reason: string,
+  payload: FideLedgerDatabase | FriendlyLedgerDatabase,
+  force = false
+): LocalSnapshotItem[] {
+  const current = getLocalSnapshots();
+  const hasAnyData =
+    payload.tournaments.length > 0 ||
+    payload.games.length > 0 ||
+    payload.opponents.length > 0;
+  if (!hasAnyData) return current;
+
+  const latestForLedger = current.find((s) => s.ledger === ledger);
+  if (!force && latestForLedger) {
+    const elapsedMs =
+      Date.now() - new Date(latestForLedger.createdAt).getTime();
+    const currentSummary = `${payload.tournaments.length} tournoi(s) · ${payload.games.length} partie(s) · ${payload.opponents.length} joueur(s)`;
+    if (elapsedMs < 5 * 60 * 1000 && latestForLedger.summary === currentSummary) {
+      return current;
+    }
+  }
+
+  return createLocalSnapshot(ledger, reason, payload);
 }
 
 export function deleteLocalSnapshot(id: string): LocalSnapshotItem[] {
@@ -771,6 +901,286 @@ export function deleteLocalSnapshot(id: string): LocalSnapshotItem[] {
   } catch {
     return [];
   }
+}
+
+// ==========================================
+// GARDE-FOU ANTI-ÉCRASEMENT & VALIDATION BACKUP
+// ==========================================
+
+export interface DataDropCheckResult {
+  isSuspicious: boolean;
+  reason: string;
+  details: { label: string; value: string }[];
+}
+
+export function detectSuspiciousFideDataDrop(
+  prev: FideLedgerDatabase,
+  next: FideLedgerDatabase
+): DataDropCheckResult {
+  const lostTournaments = prev.tournaments.length - next.tournaments.length;
+  const lostGames = prev.games.length - next.games.length;
+  const lostRatings = prev.ratingHistory.length - next.ratingHistory.length;
+
+  const wipeTournaments =
+    prev.tournaments.length >= 2 && next.tournaments.length === 0;
+  const wipeGames = prev.games.length >= 3 && next.games.length === 0;
+  const wipeRatings =
+    prev.ratingHistory.length >= 2 && next.ratingHistory.length === 0;
+  const massLossTournaments =
+    prev.tournaments.length >= 4 && lostTournaments >= Math.ceil(prev.tournaments.length * 0.5);
+  const massLossGames =
+    prev.games.length >= 6 && lostGames >= Math.ceil(prev.games.length * 0.5);
+
+  const isSuspicious =
+    wipeTournaments ||
+    wipeGames ||
+    wipeRatings ||
+    massLossTournaments ||
+    massLossGames;
+
+  return {
+    isSuspicious,
+    reason: wipeGames || wipeTournaments
+      ? 'Cette opération supprimerait la quasi-totalité de vos tournois ou parties classées.'
+      : 'Une baisse importante et inhabituelle du nombre de données a été détectée avant sauvegarde.',
+    details: [
+      {
+        label: 'Tournois FIDE',
+        value: `${prev.tournaments.length} → ${next.tournaments.length}`,
+      },
+      {
+        label: 'Parties FIDE',
+        value: `${prev.games.length} → ${next.games.length}`,
+      },
+      {
+        label: 'Relevés mensuels',
+        value: `${prev.ratingHistory.length} → ${next.ratingHistory.length}`,
+      },
+      ...(lostRatings > 0 || lostGames > 0 || lostTournaments > 0
+        ? [
+            {
+              label: 'Éléments retirés',
+              value: `${Math.max(0, lostTournaments)} tournoi(s), ${Math.max(0, lostGames)} partie(s), ${Math.max(0, lostRatings)} mois`,
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
+export function detectSuspiciousFriendlyDataDrop(
+  prev: FriendlyLedgerDatabase,
+  next: FriendlyLedgerDatabase
+): DataDropCheckResult {
+  const wipeTournaments =
+    prev.tournaments.length >= 2 && next.tournaments.length === 0;
+  const wipeGames = prev.games.length >= 3 && next.games.length === 0;
+  const massLossGames =
+    prev.games.length >= 6 &&
+    prev.games.length - next.games.length >= Math.ceil(prev.games.length * 0.5);
+
+  const isSuspicious = wipeTournaments || wipeGames || massLossGames;
+  return {
+    isSuspicious,
+    reason:
+      'Cette opération supprimerait une part importante de votre base Parties Amicales.',
+    details: [
+      {
+        label: 'Sessions amicales',
+        value: `${prev.tournaments.length} → ${next.tournaments.length}`,
+      },
+      {
+        label: 'Parties amicales',
+        value: `${prev.games.length} → ${next.games.length}`,
+      },
+    ],
+  };
+}
+
+export type ParsedBackupFile =
+  | {
+      kind: 'fide';
+      db: FideLedgerDatabase;
+      summary: {
+        tournaments: number;
+        games: number;
+        opponents: number;
+        ratings: number;
+      };
+    }
+  | {
+      kind: 'friendly';
+      db: FriendlyLedgerDatabase;
+      summary: {
+        tournaments: number;
+        games: number;
+        opponents: number;
+      };
+    }
+  | {
+      kind: 'combined';
+      fideDb: FideLedgerDatabase;
+      friendlyDb: FriendlyLedgerDatabase;
+      summary: {
+        fideTournaments: number;
+        fideGames: number;
+        fideOpponents: number;
+        fideRatings: number;
+        friendlyTournaments: number;
+        friendlyGames: number;
+        friendlyOpponents: number;
+      };
+    };
+
+export function parseAndValidateBackupJson(jsonText: string): ParsedBackupFile {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(jsonText);
+  } catch {
+    throw new Error('Fichier JSON invalide ou corrompu (syntaxe impossible à lire).');
+  }
+
+  if (!raw || typeof raw !== 'object') {
+    throw new Error('Structure de sauvegarde invalide (objet JSON attendu).');
+  }
+
+  const obj = raw as Record<string, unknown>;
+
+  // Format sauvegarde complète combinée (FIDE + Amical)
+  if (
+    obj.backupType === 'fide_chess_ledger_full_backup' &&
+    obj.fideDb &&
+    obj.friendlyDb
+  ) {
+    const fideDb = normalizeDatabasePayload(obj.fideDb);
+    const friendlyDb = normalizeFriendlyDatabasePayload(obj.friendlyDb);
+    return {
+      kind: 'combined',
+      fideDb,
+      friendlyDb,
+      summary: {
+        fideTournaments: fideDb.tournaments.length,
+        fideGames: fideDb.games.length,
+        fideOpponents: fideDb.opponents.length,
+        fideRatings: fideDb.ratingHistory.length,
+        friendlyTournaments: friendlyDb.tournaments.length,
+        friendlyGames: friendlyDb.games.length,
+        friendlyOpponents: friendlyDb.opponents.length,
+      },
+    };
+  }
+
+  // Format Base Amicale (#2)
+  if (obj.ledgerType === 'friendly_chess_ledger') {
+    const db = normalizeFriendlyDatabasePayload(obj);
+    return {
+      kind: 'friendly',
+      db,
+      summary: {
+        tournaments: db.tournaments.length,
+        games: db.games.length,
+        opponents: db.opponents.length,
+      },
+    };
+  }
+
+  // Format Base Classée FIDE (#1)
+  if (
+    'profile' in obj ||
+    'ratingHistory' in obj ||
+    ('games' in obj && 'tournaments' in obj)
+  ) {
+    const db = normalizeDatabasePayload(obj);
+    return {
+      kind: 'fide',
+      db,
+      summary: {
+        tournaments: db.tournaments.length,
+        games: db.games.length,
+        opponents: db.opponents.length,
+        ratings: db.ratingHistory.length,
+      },
+    };
+  }
+
+  throw new Error(
+    'Ce fichier JSON ne correspond pas à une sauvegarde FIDE Chess Ledger reconnue.'
+  );
+}
+
+export function mergeFideDatabases(
+  current: FideLedgerDatabase,
+  incoming: FideLedgerDatabase
+): {
+  merged: FideLedgerDatabase;
+  addedCounts: {
+    tournaments: number;
+    games: number;
+    opponents: number;
+    ratings: number;
+  };
+} {
+  const existingTIds = new Set(current.tournaments.map((t) => t.id));
+  const addedT = incoming.tournaments.filter((t) => !existingTIds.has(t.id));
+
+  const existingGIds = new Set(current.games.map((g) => g.id));
+  const addedG = incoming.games.filter((g) => !existingGIds.has(g.id));
+
+  const existingOIds = new Set(current.opponents.map((o) => o.id));
+  const addedO = incoming.opponents.filter((o) => !existingOIds.has(o.id));
+
+  const existingRPeriods = new Set(current.ratingHistory.map((r) => r.period));
+  const addedR = incoming.ratingHistory.filter(
+    (r) => !existingRPeriods.has(r.period)
+  );
+
+  return {
+    merged: {
+      ...current,
+      tournaments: [...current.tournaments, ...addedT],
+      games: [...current.games, ...addedG],
+      opponents: deduplicateOpponents([...current.opponents, ...addedO]),
+      ratingHistory: [...current.ratingHistory, ...addedR],
+    },
+    addedCounts: {
+      tournaments: addedT.length,
+      games: addedG.length,
+      opponents: addedO.length,
+      ratings: addedR.length,
+    },
+  };
+}
+
+export function mergeFriendlyDatabases(
+  current: FriendlyLedgerDatabase,
+  incoming: FriendlyLedgerDatabase
+): {
+  merged: FriendlyLedgerDatabase;
+  addedCounts: { tournaments: number; games: number; opponents: number };
+} {
+  const existingTIds = new Set(current.tournaments.map((t) => t.id));
+  const addedT = incoming.tournaments.filter((t) => !existingTIds.has(t.id));
+
+  const existingGIds = new Set(current.games.map((g) => g.id));
+  const addedG = incoming.games.filter((g) => !existingGIds.has(g.id));
+
+  const existingOIds = new Set(current.opponents.map((o) => o.id));
+  const addedO = incoming.opponents.filter((o) => !existingOIds.has(o.id));
+
+  return {
+    merged: {
+      ...current,
+      ledgerType: 'friendly_chess_ledger',
+      tournaments: [...current.tournaments, ...addedT],
+      games: [...current.games, ...addedG],
+      opponents: deduplicateOpponents([...current.opponents, ...addedO]),
+    },
+    addedCounts: {
+      tournaments: addedT.length,
+      games: addedG.length,
+      opponents: addedO.length,
+    },
+  };
 }
 
 // ==========================================

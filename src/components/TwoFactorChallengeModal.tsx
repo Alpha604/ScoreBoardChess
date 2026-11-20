@@ -69,6 +69,7 @@ export const TwoFactorChallengeModal: React.FC<
     getTotpSecondsRemaining()
   );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const is2faConfigured = Boolean(
     twoFactorAuth?.enabled && twoFactorAuth?.secret
@@ -82,6 +83,7 @@ export const TwoFactorChallengeModal: React.FC<
       setIsOtpValid(false);
       setOtpError(null);
       setIsSubmitting(false);
+      setSubmitError(null);
       return;
     }
 
@@ -90,6 +92,7 @@ export const TwoFactorChallengeModal: React.FC<
     setIsOtpValid(false);
     setOtpError(null);
     setIsSubmitting(false);
+    setSubmitError(null);
     setTotpRemaining(getTotpSecondsRemaining());
   }, [isOpen, title, itemLabel]);
 
@@ -151,8 +154,15 @@ export const TwoFactorChallengeModal: React.FC<
     }
 
     setIsSubmitting(true);
+    setSubmitError(null);
     try {
       await onVerifiedConfirm();
+    } catch (err) {
+      setSubmitError(
+        err instanceof Error
+          ? err.message
+          : 'Impossible de finaliser l’action protégée.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -338,6 +348,13 @@ export const TwoFactorChallengeModal: React.FC<
                   {otpError}
                 </div>
               )}
+            </div>
+          )}
+
+          {submitError && (
+            <div className="p-3 rounded-xl bg-rose-500/15 border border-rose-500/40 text-xs text-rose-300 flex items-start gap-2">
+              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+              <span>{submitError}</span>
             </div>
           )}
 

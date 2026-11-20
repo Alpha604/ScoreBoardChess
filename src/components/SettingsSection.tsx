@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   ArchiveRestore,
@@ -10,15 +10,19 @@ import {
   Download,
   Eye,
   EyeOff,
+  FileUp,
   HardDrive,
   KeyRound,
+  Lock,
   RefreshCw,
   RotateCcw,
   Save,
+  ShieldAlert,
   ShieldCheck,
   Swords,
   Trash2,
   Trophy,
+  Unlock,
   UploadCloud,
   Users,
   X,
@@ -33,6 +37,9 @@ import {
   FideLedgerDatabase,
   FriendlyLedgerDatabase,
   LocalSnapshotItem,
+  parseAndValidateBackupJson,
+  ParsedBackupFile,
+  PendingSyncState,
   SessionConfig,
 } from '../services/jsonbinService';
 import {
@@ -46,9 +53,9 @@ import {
   getOpponentEloForCadence,
   isOpponentEloUnknownForCadence,
 } from '../utils/fideValidation';
-import { ConfirmDeleteModal } from './ConfirmDeleteModal';
 import { IconButton } from './IconButton';
 import { MicrosoftAuthenticatorPanel } from './MicrosoftAuthenticatorPanel';
+import { TwoFactorChallengeModal } from './TwoFactorChallengeModal';
 
 interface SettingsSectionProps {
   session: SessionConfig;
@@ -56,8 +63,17 @@ interface SettingsSectionProps {
   friendlyDb: FriendlyLedgerDatabase;
   fideStatus: BinSyncStatus;
   friendlyStatus: BinSyncStatus;
+  pendingSync: PendingSyncState;
+  lastBackupAt: string | null;
+  isReadOnlyLock: boolean;
   deletedVault: DeletedVaultItem[];
   snapshots: LocalSnapshotItem[];
+  onToggleReadOnlyLock: () => void;
+  onExportBackupFile: (scope: 'fide' | 'friendly' | 'combined') => void;
+  onImportBackupFile: (
+    parsed: ParsedBackupFile,
+    mode: 'merge' | 'replace'
+  ) => Promise<void>;
   onUpdateSessionConfig: (nextSession: SessionConfig) => void;
   onSyncFideFromCloud: () => Promise<void>;
   onPushFideToCloud: () => Promise<void>;
@@ -87,8 +103,14 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
   friendlyDb,
   fideStatus,
   friendlyStatus,
+  pendingSync,
+  lastBackupAt,
+  isReadOnlyLock,
   deletedVault,
   snapshots,
+  onToggleReadOnlyLock,
+  onExportBackupFile,
+  onImportBackupFile,
   onUpdateSessionConfig,
   onSyncFideFromCloud,
   onPushFideToCloud,
@@ -104,6 +126,7 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
   onRestoreSingleEntity,
   onUpdateTwoFactorAuth,
 }) => {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [binIdInput, setBinIdInput] = useState(session.binId);
   const [masterKeyInput, setMasterKeyInput] = useState(session.masterKey);
   const [friendlyBinIdInput, setFriendlyBinIdInput] = useState(
@@ -122,7 +145,28 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
     'tournaments' | 'games' | 'opponents'
   >('games');
   const [restoringNotice, setRestoringNotice] = useState<string | null>(null);
-  const [confirmClearVault, setConfirmClearVault] = useState(false);
+
+  // Import JSON validé
+  const [parsedImport, setParsedImport] = useState<{
+    fileName: string;
+    parsed: ParsedBackupFile;
+  } | null>(null);
+  const [importError, setImportError] = useState<string | null>(null);
+
+  // Challenge A2F pour toute action sensible dans Paramètres
+  const [pending2faAction, setPending2faAction] = useState<{
+    variant: 'danger' | 'primary';
+    badgeLabel: string;
+    title: string;
+    subtitle: string;
+    itemLabel: string;
+    details: { label: string; value: string }[];
+    requireCheckbox?: boolean;
+    checkboxLabel?: string;
+    confirmButtonLabel: string;
+    successMessage: string;
+    run: () => Promise<void> | void;
+  } | null>(null);
 
   const fideSizeKb = useMemo(() => {
     try {
@@ -178,7 +222,7 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
 
   const handleSaveConfig = (e: React.FormEvent) => {
     e.preventDefault();
-    onUpdateSessionConfig({
+    const nextSession: SessionConfig = {
       ...session,
       binId: binIdInput.trim() || DEFAULT_JSONBIN_BIN_ID,
       masterKey: masterKeyInput.trim() || DEFAULT_JSONBIN_MASTER_KEY,
@@ -186,27 +230,48 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         friendlyBinIdInput.trim() || DEFAULT_FRIENDLY_JSONBIN_BIN_ID,
       friendlyMasterKey:
         friendlyMasterKeyInput.trim() || DEFAULT_FRIENDLY_JSONBIN_MASTER_KEY,
+    };
+
+    setPending2faAction({
+      variant: 'primary',
+      badgeLabel: 'Modification sensible · Identifiants JSONBin',
+      title: 'Modifier la configuration des JSONBin ?',
+      subtitle:
+        'Changer d’ID de Bin ou de Master Key redirigera vos lectures et sauvegardes Cloud. Validez par Microsoft Authenticator.',
+      itemLabel: `Bin FIDE : ${nextSession.binId}`,
+      details: [
+        { label: 'Bin #1 (FIDE)', value: nextSession.binId },
+        { label: 'Bin #2 (Amical)', value: nextSession.friendlyBinId },
+      ],
+      confirmButtonLabel: 'Enregistrer avec A2F',
+      successMessage: 'Configuration des 2 JSONBin mise à jour.',
+      run: () => {
+        onUpdateSessionConfig(nextSession);
+        setConfigSavedBanner(true);
+        setTimeout(() => setConfigSavedBanner(false), 3500);
+      },
     });
-    setConfigSavedBanner(true);
-    setTimeout(() => setConfigSavedBanner(false), 3500);
   };
 
-  const handleDownloadJson = (ledger: 'fide' | 'friendly') => {
-    const payload = ledger === 'fide' ? fideDb : friendlyDb;
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: 'application/json',
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download =
-      ledger === 'fide'
-        ? `sauvegarde_fide_classee_${new Date().toISOString().slice(0, 10)}.json`
-        : `sauvegarde_parties_amicales_${new Date()
-            .toISOString()
-            .slice(0, 10)}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const handleSelectBackupFile = async (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    setImportError(null);
+    try {
+      const text = await file.text();
+      const parsed = parseAndValidateBackupJson(text);
+      setParsedImport({ fileName: file.name, parsed });
+    } catch (err) {
+      setParsedImport(null);
+      setImportError(
+        err instanceof Error
+          ? err.message
+          : 'Impossible de lire ce fichier de sauvegarde.'
+      );
+    }
   };
 
   const showNotice = (msg: string) => {
@@ -282,6 +347,239 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
           </IconButton>
         </div>
       )}
+
+      {/* BOUCLIER DE SÉCURITÉ, EXPORT & IMPORT .JSON */}
+      <div className="bg-[#131820] border border-[#232C3A] rounded-2xl p-5 space-y-5">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-[#232C3A] pb-4">
+          <div className="space-y-1">
+            <div className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              Coffre-fort & Protection Anti-Fausse Manip
+            </div>
+            <h2 className="font-display text-lg font-bold text-[#F1F4F8]">
+              État de sécurité de vos données
+            </h2>
+            <p className="text-xs text-[#9BA7B8]">
+              Snapshots automatiques avant suppression, file de secours hors-ligne, verrou lecture seule et sauvegarde/import JSON vérifié.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={onToggleReadOnlyLock}
+              className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold border transition-colors cursor-pointer ${
+                isReadOnlyLock
+                  ? 'bg-[#D4A853]/15 border-[#D4A853]/45 text-[#D4A853]'
+                  : 'bg-[#19202B] hover:bg-[#232C3A] border-[#2B3647] text-[#CBD5E1]'
+              }`}
+            >
+              {isReadOnlyLock ? (
+                <>
+                  <Lock className="w-3.5 h-3.5" />
+                  <span>Lecture seule active</span>
+                </>
+              ) : (
+                <>
+                  <Unlock className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Verrouiller en lecture seule</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                onExportBackupFile('combined');
+                showNotice(
+                  'Sauvegarde complète (.JSON FIDE + Amical) téléchargée avec succès.'
+                );
+              }}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-colors cursor-pointer"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Sauvegarde complète (.JSON)</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#19202B] hover:bg-[#232C3A] border border-[#2B3647] text-xs font-bold text-[#F1F4F8] transition-colors cursor-pointer"
+            >
+              <FileUp className="w-3.5 h-3.5 text-[#D4A853]" />
+              <span>Importer un .JSON</span>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json,application/json"
+              onChange={handleSelectBackupFile}
+              className="hidden"
+            />
+          </div>
+        </div>
+
+        {/* 4 Indicateurs de santé de sauvegarde */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
+          <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+            <div className="text-[11px] text-[#6C788B] font-semibold">
+              Protection A2F Microsoft
+            </div>
+            <div
+              className={`font-mono font-bold mt-1 ${
+                fideDb.profile.twoFactorAuth?.enabled
+                  ? 'text-emerald-400'
+                  : 'text-[#D4A853]'
+              }`}
+            >
+              {fideDb.profile.twoFactorAuth?.enabled
+                ? 'Active sur connexion & suppressions'
+                : 'Non configurée'}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+            <div className="text-[11px] text-[#6C788B] font-semibold">
+              File d’attente Cloud JSONBin
+            </div>
+            <div
+              className={`font-mono font-bold mt-1 ${
+                pendingSync.fide.pending || pendingSync.friendly.pending
+                  ? 'text-[#D4A853]'
+                  : 'text-emerald-400'
+              }`}
+            >
+              {pendingSync.fide.pending || pendingSync.friendly.pending
+                ? 'Envois en attente (cache sûr)'
+                : 'Tout est synchronisé'}
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+            <div className="text-[11px] text-[#6C788B] font-semibold">
+              Points de restauration auto
+            </div>
+            <div className="font-mono font-bold text-[#F1F4F8] mt-1">
+              {snapshots.length} / 25 sauvegardés
+            </div>
+          </div>
+
+          <div className="p-3.5 rounded-xl bg-[#19202B] border border-[#232C3A]">
+            <div className="text-[11px] text-[#6C788B] font-semibold">
+              Dernier export fichier .JSON
+            </div>
+            <div
+              className={`font-mono font-bold mt-1 ${
+                lastBackupAt ? 'text-emerald-400' : 'text-[#D4A853]'
+              }`}
+            >
+              {lastBackupAt
+                ? new Date(lastBackupAt).toLocaleDateString('fr-FR')
+                : 'Aucun export encore'}
+            </div>
+          </div>
+        </div>
+
+        {importError && (
+          <div className="p-3.5 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-between gap-2 text-xs text-rose-200">
+            <div className="flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+              <span>{importError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setImportError(null)}
+              className="text-rose-300 hover:text-white cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {parsedImport && (
+          <div className="p-4 rounded-xl bg-[#19202B] border border-emerald-500/40 space-y-3 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <div className="font-bold text-emerald-400 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4" />
+                  Fichier vérifié : {parsedImport.fileName}
+                </div>
+                <div className="text-[#9BA7B8] font-mono mt-1">
+                  {parsedImport.parsed.kind === 'combined'
+                    ? `Sauvegarde complète — FIDE (${parsedImport.parsed.summary.fideTournaments} tournois, ${parsedImport.parsed.summary.fideGames} parties, ${parsedImport.parsed.summary.fideRatings} mois) + Amical (${parsedImport.parsed.summary.friendlyGames} parties)`
+                    : parsedImport.parsed.kind === 'fide'
+                    ? `Base Classée FIDE — ${parsedImport.parsed.summary.tournaments} tournoi(s), ${parsedImport.parsed.summary.games} partie(s), ${parsedImport.parsed.summary.opponents} joueur(s), ${parsedImport.parsed.summary.ratings} mois`
+                    : `Base Parties Amicales — ${parsedImport.parsed.summary.tournaments} session(s), ${parsedImport.parsed.summary.games} partie(s), ${parsedImport.parsed.summary.opponents} joueur(s)`}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setParsedImport(null)}
+                className="text-[#9BA7B8] hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 pt-1">
+              <button
+                type="button"
+                onClick={async () => {
+                  const target = parsedImport.parsed;
+                  await onImportBackupFile(target, 'merge');
+                  setParsedImport(null);
+                  showNotice(
+                    'Fusion sans perte terminée : les nouveaux éléments ont été ajoutés en conservant toutes vos données actuelles.'
+                  );
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>Fusionner sans rien supprimer</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const target = parsedImport;
+                  setPending2faAction({
+                    variant: 'danger',
+                    badgeLabel: 'Restauration intégrale · Import JSON',
+                    title: 'Remplacer la base actuelle par ce fichier .JSON ?',
+                    subtitle:
+                      'Un point de sauvegarde automatique sera créé juste avant le remplacement. Cette opération remplace la base ciblée après code A2F.',
+                    itemLabel: target.fileName,
+                    details: [
+                      {
+                        label: 'Type détecté',
+                        value:
+                          target.parsed.kind === 'combined'
+                            ? 'Complet (FIDE + Amical)'
+                            : target.parsed.kind === 'fide'
+                            ? 'Base Classée FIDE (#1)'
+                            : 'Base Parties Amicales (#2)',
+                      },
+                    ],
+                    requireCheckbox: true,
+                    checkboxLabel:
+                      'Je confirme vouloir remplacer les données actuelles par ce fichier de sauvegarde.',
+                    confirmButtonLabel: 'Remplacer avec A2F',
+                    successMessage: `Sauvegarde "${target.fileName}" restaurée avec succès.`,
+                    run: async () => {
+                      await onImportBackupFile(target.parsed, 'replace');
+                      setParsedImport(null);
+                    },
+                  });
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/40 text-rose-200 font-bold cursor-pointer"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Remplacer intégralement (A2F)</span>
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* SECTION 0 : SÉCURITÉ A2F MICROSOFT AUTHENTICATOR */}
       <MicrosoftAuthenticatorPanel
@@ -367,11 +665,30 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
               />
             </IconButton>
             <IconButton
-              label="Forcer l'envoi du cache vers Bin #1 (1 PUT)"
+              label="Forcer l'envoi du cache vers Bin #1 (1 PUT · A2F)"
               variant="primary"
               size="md"
               disabled={fideStatus.state === 'syncing'}
-              onClick={onPushFideToCloud}
+              onClick={() =>
+                setPending2faAction({
+                  variant: 'primary',
+                  badgeLabel: 'Écriture Cloud · Bin #1 FIDE',
+                  title: 'Écraser le Cloud Bin #1 avec le cache local ?',
+                  subtitle:
+                    'Le contenu du JSONBin #1 va être remplacé par votre cache local actuel.',
+                  itemLabel: `${fideDb.tournaments.length} tournois · ${fideDb.games.length} parties · ${fideDb.opponents.length} joueurs`,
+                  details: [
+                    { label: 'Bin cible', value: session.binId },
+                    {
+                      label: 'Contenu local',
+                      value: `${fideDb.games.length} parties / ${fideDb.ratingHistory.length} mois`,
+                    },
+                  ],
+                  confirmButtonLabel: 'Envoyer vers Bin #1 (A2F)',
+                  successMessage: 'Cache local envoyé vers JSONBin #1 (FIDE).',
+                  run: onPushFideToCloud,
+                })
+              }
             >
               <UploadCloud className="w-4 h-4" />
             </IconButton>
@@ -379,7 +696,10 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
               label="Exporter la base FIDE en .JSON"
               variant="surface"
               size="md"
-              onClick={() => handleDownloadJson('fide')}
+              onClick={() => {
+                onExportBackupFile('fide');
+                showNotice('Export .JSON de la base Classée FIDE téléchargé.');
+              }}
             >
               <Download className="w-4 h-4" />
             </IconButton>
@@ -461,11 +781,32 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
               />
             </IconButton>
             <IconButton
-              label="Forcer l'envoi du cache vers Bin #2 (1 PUT)"
+              label="Forcer l'envoi du cache vers Bin #2 (1 PUT · A2F)"
               variant="gold"
               size="md"
               disabled={friendlyStatus.state === 'syncing'}
-              onClick={onPushFriendlyToCloud}
+              onClick={() =>
+                setPending2faAction({
+                  variant: 'primary',
+                  badgeLabel: 'Écriture Cloud · Bin #2 Amical',
+                  title: 'Écraser le Cloud Bin #2 avec le cache local ?',
+                  subtitle:
+                    'Le contenu du JSONBin Amical va être remplacé par votre cache local actuel.',
+                  itemLabel: `${friendlyDb.tournaments.length} sessions · ${friendlyDb.games.length} parties · ${friendlyDb.opponents.length} joueurs`,
+                  details: [
+                    {
+                      label: 'Bin cible',
+                      value:
+                        session.friendlyBinId ||
+                        DEFAULT_FRIENDLY_JSONBIN_BIN_ID,
+                    },
+                  ],
+                  confirmButtonLabel: 'Envoyer vers Bin #2 (A2F)',
+                  successMessage:
+                    'Cache local envoyé vers JSONBin #2 (Amical).',
+                  run: onPushFriendlyToCloud,
+                })
+              }
             >
               <UploadCloud className="w-4 h-4" />
             </IconButton>
@@ -473,7 +814,10 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
               label="Exporter la base Amicale en .JSON"
               variant="surface"
               size="md"
-              onClick={() => handleDownloadJson('friendly')}
+              onClick={() => {
+                onExportBackupFile('friendly');
+                showNotice('Export .JSON des Parties Amicales téléchargé.');
+              }}
             >
               <Download className="w-4 h-4" />
             </IconButton>
@@ -495,10 +839,31 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
           </div>
           {deletedVault.length > 0 && (
             <IconButton
-              label="Vider définitivement la corbeille locale"
+              label="Vider définitivement la corbeille locale (A2F)"
               variant="danger"
               size="sm"
-              onClick={() => setConfirmClearVault(true)}
+              onClick={() =>
+                setPending2faAction({
+                  variant: 'danger',
+                  badgeLabel: 'Suppression définitive · Corbeille',
+                  title: 'Vider définitivement la corbeille locale ?',
+                  subtitle:
+                    'Tous les éléments supprimés conservés en secours local seront effacés définitivement après validation A2F.',
+                  itemLabel: `${deletedVault.length} élément(s) dans la corbeille`,
+                  details: [
+                    {
+                      label: 'Contenu',
+                      value: `${deletedVault.length} élément(s) récupérables`,
+                    },
+                  ],
+                  requireCheckbox: true,
+                  checkboxLabel:
+                    'Je comprends que ces copies de secours locales seront effacées définitivement.',
+                  confirmButtonLabel: 'Vider avec A2F',
+                  successMessage: 'Corbeille locale vidée.',
+                  run: () => onClearDeletedVault(),
+                })
+              }
             >
               <Trash2 className="w-4 h-4" />
             </IconButton>
@@ -684,17 +1049,36 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                       </IconButton>
 
                       <IconButton
-                        label="Tout restaurer depuis ce snapshot"
+                        label="Tout restaurer depuis ce snapshot (A2F)"
                         variant="primary"
                         size="sm"
-                        onClick={async () => {
-                          await onRestoreFullSnapshot(snap);
-                          showNotice(
-                            `Point de restauration du ${new Date(
+                        onClick={() =>
+                          setPending2faAction({
+                            variant: 'danger',
+                            badgeLabel: 'Restauration Snapshot · Protégée A2F',
+                            title: 'Restaurer intégralement ce point de sauvegarde ?',
+                            subtitle:
+                              'Un snapshot automatique de l’état actuel sera créé juste avant la restauration, puis votre base sera restaurée à cet instant.',
+                            itemLabel: snap.reason,
+                            details: [
+                              {
+                                label: 'Date du snapshot',
+                                value: new Date(snap.createdAt).toLocaleString(
+                                  'fr-FR'
+                                ),
+                              },
+                              { label: 'Contenu', value: snap.summary },
+                            ],
+                            requireCheckbox: true,
+                            checkboxLabel:
+                              'Je confirme vouloir restaurer ma base à ce point de sauvegarde.',
+                            confirmButtonLabel: 'Restaurer avec A2F',
+                            successMessage: `Point de restauration du ${new Date(
                               snap.createdAt
-                            ).toLocaleString('fr-FR')} restauré intégralement.`
-                          );
-                        }}
+                            ).toLocaleString('fr-FR')} restauré intégralement.`,
+                            run: () => onRestoreFullSnapshot(snap),
+                          })
+                        }
                       >
                         <RotateCcw className="w-3.5 h-3.5" />
                       </IconButton>
@@ -761,53 +1145,101 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
                 Restauration ciblée :
               </span>
               <IconButton
-                label={`Restaurer uniquement les Tournois (${inspectedSource.tournaments.length})`}
+                label={`Restaurer uniquement les Tournois (${inspectedSource.tournaments.length}) (A2F)`}
                 variant="surface"
                 size="sm"
                 badge={inspectedSource.tournaments.length}
-                onClick={async () => {
-                  await onRestoreSelectiveFromSnapshot(
-                    selectedSnapshot,
-                    'tournaments'
-                  );
-                  showNotice(
-                    'Les tournois de ce point de sauvegarde ont été restaurés.'
-                  );
-                }}
+                onClick={() =>
+                  setPending2faAction({
+                    variant: 'primary',
+                    badgeLabel: 'Restauration sélective · Tournois',
+                    title: 'Restaurer uniquement les tournois de ce snapshot ?',
+                    subtitle:
+                      'Un snapshot de secours de vos données actuelles sera créé avant d’appliquer la restauration.',
+                    itemLabel: `${inspectedSource.tournaments.length} tournoi(s)`,
+                    details: [
+                      {
+                        label: 'Snapshot source',
+                        value: new Date(
+                          selectedSnapshot.createdAt
+                        ).toLocaleString('fr-FR'),
+                      },
+                    ],
+                    confirmButtonLabel: 'Restaurer Tournois (A2F)',
+                    successMessage:
+                      'Les tournois de ce point de sauvegarde ont été restaurés.',
+                    run: () =>
+                      onRestoreSelectiveFromSnapshot(
+                        selectedSnapshot,
+                        'tournaments'
+                      ),
+                  })
+                }
               >
                 <Trophy className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                label={`Restaurer uniquement les Parties (${inspectedSource.games.length})`}
+                label={`Restaurer uniquement les Parties (${inspectedSource.games.length}) (A2F)`}
                 variant="surface"
                 size="sm"
                 badge={inspectedSource.games.length}
-                onClick={async () => {
-                  await onRestoreSelectiveFromSnapshot(
-                    selectedSnapshot,
-                    'games'
-                  );
-                  showNotice(
-                    'Les parties de ce point de sauvegarde ont été restaurées.'
-                  );
-                }}
+                onClick={() =>
+                  setPending2faAction({
+                    variant: 'primary',
+                    badgeLabel: 'Restauration sélective · Parties',
+                    title: 'Restaurer uniquement les parties de ce snapshot ?',
+                    subtitle:
+                      'Un snapshot de secours de vos données actuelles sera créé avant d’appliquer la restauration.',
+                    itemLabel: `${inspectedSource.games.length} partie(s)`,
+                    details: [
+                      {
+                        label: 'Snapshot source',
+                        value: new Date(
+                          selectedSnapshot.createdAt
+                        ).toLocaleString('fr-FR'),
+                      },
+                    ],
+                    confirmButtonLabel: 'Restaurer Parties (A2F)',
+                    successMessage:
+                      'Les parties de ce point de sauvegarde ont été restaurées.',
+                    run: () =>
+                      onRestoreSelectiveFromSnapshot(selectedSnapshot, 'games'),
+                  })
+                }
               >
                 <Swords className="w-3.5 h-3.5" />
               </IconButton>
               <IconButton
-                label={`Restaurer uniquement les Joueurs (${inspectedSource.opponents.length})`}
+                label={`Restaurer uniquement les Joueurs (${inspectedSource.opponents.length}) (A2F)`}
                 variant="surface"
                 size="sm"
                 badge={inspectedSource.opponents.length}
-                onClick={async () => {
-                  await onRestoreSelectiveFromSnapshot(
-                    selectedSnapshot,
-                    'opponents'
-                  );
-                  showNotice(
-                    'Les joueurs de ce point de sauvegarde ont été restaurés.'
-                  );
-                }}
+                onClick={() =>
+                  setPending2faAction({
+                    variant: 'primary',
+                    badgeLabel: 'Restauration sélective · Joueurs',
+                    title: 'Restaurer uniquement les joueurs de ce snapshot ?',
+                    subtitle:
+                      'Un snapshot de secours de vos données actuelles sera créé avant d’appliquer la restauration.',
+                    itemLabel: `${inspectedSource.opponents.length} joueur(s)`,
+                    details: [
+                      {
+                        label: 'Snapshot source',
+                        value: new Date(
+                          selectedSnapshot.createdAt
+                        ).toLocaleString('fr-FR'),
+                      },
+                    ],
+                    confirmButtonLabel: 'Restaurer Joueurs (A2F)',
+                    successMessage:
+                      'Les joueurs de ce point de sauvegarde ont été restaurés.',
+                    run: () =>
+                      onRestoreSelectiveFromSnapshot(
+                        selectedSnapshot,
+                        'opponents'
+                      ),
+                  })
+                }
               >
                 <Users className="w-3.5 h-3.5" />
               </IconButton>
@@ -1101,23 +1533,30 @@ export const SettingsSection: React.FC<SettingsSectionProps> = ({
         </div>
       </form>
 
-      <ConfirmDeleteModal
-        isOpen={confirmClearVault}
-        title="Vider définitivement la corbeille de secours locale ?"
-        subtitle="Tous les éléments supprimés conservés dans la corbeille locale de votre navigateur seront effacés. Vos données actives dans vos 2 JSONBin ne seront pas touchées."
-        itemName="Corbeille de secours locale"
-        details={[
-          {
-            label: 'Éléments dans la corbeille',
-            value: `${deletedVault.length} élément(s)`,
-          },
-        ]}
-        onCancel={() => setConfirmClearVault(false)}
-        onConfirm={() => {
-          onClearDeletedVault();
-          setConfirmClearVault(false);
+      <TwoFactorChallengeModal
+        isOpen={Boolean(pending2faAction)}
+        variant={pending2faAction?.variant || 'primary'}
+        badgeLabel={pending2faAction?.badgeLabel || 'Action sensible · A2F'}
+        title={pending2faAction?.title || ''}
+        subtitle={pending2faAction?.subtitle || ''}
+        itemLabel={pending2faAction?.itemLabel || ''}
+        details={pending2faAction?.details}
+        requireCheckbox={pending2faAction?.requireCheckbox}
+        checkboxLabel={pending2faAction?.checkboxLabel}
+        confirmLabel={pending2faAction?.confirmButtonLabel}
+        twoFactorAuth={fideDb.profile.twoFactorAuth}
+        accountName={fideDb.profile.displayName}
+        onUpdateTwoFactorAuth={onUpdateTwoFactorAuth}
+        onCancel={() => setPending2faAction(null)}
+        onVerifiedConfirm={async () => {
+          if (!pending2faAction) return;
+          const act = pending2faAction;
+          await act.run();
+          setPending2faAction(null);
+          showNotice(act.successMessage);
         }}
       />
     </div>
   );
 };
+
